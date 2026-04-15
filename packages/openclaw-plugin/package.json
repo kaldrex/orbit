@@ -1,0 +1,10 @@
+{
+  "name": "@orbit/openclaw-plugin",
+  "version": "1.0.0",
+  "description": "OpenClaw plugin for Orbit relationship intelligence — read + write tools for your relationship graph",
+  "type": "module",
+  "main": "index.js",
+  "files": ["index.js", "SKILL.md"],
+  "keywords": ["openclaw", "plugin", "orbit", "relationship", "graph", "crm"],
+  "license": "MIT"
+}
