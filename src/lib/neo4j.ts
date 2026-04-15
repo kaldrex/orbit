@@ -60,7 +60,7 @@ export async function queryNeo4j<T = Record<string, unknown>>(
   params: Record<string, unknown> = {}
 ): Promise<T[]> {
   const session = getDriver().session({
-    database: process.env.NEO4J_DATABASE || "neo4j",
+    database: (process.env.NEO4J_DATABASE || "neo4j").trim(),
   });
   try {
     const result = await session.run(cypher, { ...params, userId });
@@ -85,7 +85,7 @@ export async function writeNeo4j(
   params: Record<string, unknown> = {}
 ): Promise<void> {
   const session = getDriver().session({
-    database: process.env.NEO4J_DATABASE || "neo4j",
+    database: (process.env.NEO4J_DATABASE || "neo4j").trim(),
     defaultAccessMode: neo4j.session.WRITE,
   });
   try {
