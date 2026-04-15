@@ -1,6 +1,5 @@
 import type { Theme } from "reagraph";
 
-// Monochrome dark theme — matches the new Orbit SaaS palette.
 export const orbitDarkTheme: Theme = {
   canvas: {
     background: "#09090b",
@@ -18,19 +17,19 @@ export const orbitDarkTheme: Theme = {
       activeColor: "#ffffff",
     },
     subLabel: {
-      color: "#71717A",
+      color: "#a1a1aa",
       stroke: "#09090b",
       activeColor: "#ffffff",
     },
   },
   edge: {
-    fill: "#3f3f46",
+    fill: "#d4d4d8",       // zinc-300 — visible white-ish lines on dark bg
     activeFill: "#ffffff",
-    opacity: 0.7,
+    opacity: 0.45,
     selectedOpacity: 1,
-    inactiveOpacity: 0.15,
+    inactiveOpacity: 0.12,
     label: {
-      color: "#71717A",
+      color: "#a1a1aa",
       stroke: "#09090b",
       activeColor: "#ffffff",
       fontSize: 6,
@@ -41,7 +40,7 @@ export const orbitDarkTheme: Theme = {
     activeFill: "#ffffff",
   },
   arrow: {
-    fill: "#18181b",
+    fill: "#a1a1aa",
     activeFill: "#ffffff",
   },
   lasso: {
@@ -53,8 +52,66 @@ export const orbitDarkTheme: Theme = {
     fill: undefined as unknown as string,
     opacity: 0.2,
     label: {
-      color: "#09090b", // Match background to hide — transparent doesn't work in three.js
+      color: "#09090b",
       stroke: "#09090b",
+    },
+  },
+};
+
+export const orbitLightTheme: Theme = {
+  canvas: {
+    background: "#fafafa",
+    fog: "#fafafa",
+  },
+  node: {
+    fill: "#a1a1aa",
+    activeFill: "#18181b",
+    opacity: 1,
+    selectedOpacity: 1,
+    inactiveOpacity: 0.15,
+    label: {
+      color: "#18181b",
+      stroke: "#fafafa",
+      activeColor: "#09090b",
+    },
+    subLabel: {
+      color: "#71717a",
+      stroke: "#fafafa",
+      activeColor: "#09090b",
+    },
+  },
+  edge: {
+    fill: "#71717a",       // zinc-500 — visible gray lines on light bg
+    activeFill: "#18181b",
+    opacity: 0.4,
+    selectedOpacity: 1,
+    inactiveOpacity: 0.08,
+    label: {
+      color: "#71717a",
+      stroke: "#fafafa",
+      activeColor: "#18181b",
+      fontSize: 6,
+    },
+  },
+  ring: {
+    fill: "#d4d4d8",
+    activeFill: "#18181b",
+  },
+  arrow: {
+    fill: "#71717a",
+    activeFill: "#18181b",
+  },
+  lasso: {
+    border: "1px solid #18181b",
+    background: "rgba(0, 0, 0, 0.05)",
+  },
+  cluster: {
+    stroke: "#e4e4e7",
+    fill: undefined as unknown as string,
+    opacity: 0.2,
+    label: {
+      color: "#fafafa",
+      stroke: "#fafafa",
     },
   },
 };

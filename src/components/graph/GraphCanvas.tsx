@@ -9,7 +9,7 @@ import {
   useSelection,
 } from "reagraph";
 
-import { orbitDarkTheme } from "@/lib/reagraph-theme";
+import { orbitDarkTheme, orbitLightTheme } from "@/lib/reagraph-theme";
 import type { ReagraphNode } from "@/lib/graph-transforms";
 import { useGraphData } from "./useGraphData";
 import GraphControls, { type LayoutKey, type SizingKey } from "./GraphControls";
@@ -20,6 +20,7 @@ interface GraphCanvasProps {
   onSelectPerson: (id: string) => void;
   activeFilter: string;
   selfNodeId: string;
+  isDark?: boolean;
 }
 
 function resolveLayoutType(key: LayoutKey): LayoutTypes {
@@ -35,6 +36,7 @@ export default function GraphCanvas({
   onSelectPerson,
   activeFilter,
   selfNodeId,
+  isDark = true,
 }: GraphCanvasProps) {
   const graphRef = useRef<GraphCanvasRef | null>(null);
   const [layout, setLayout] = useState<LayoutKey>("forceDirected");
@@ -102,12 +104,13 @@ export default function GraphCanvas({
     [selOnPointerOut]
   );
 
-  const theme = orbitDarkTheme;
+  const theme = isDark ? orbitDarkTheme : orbitLightTheme;
+  const bgColor = isDark ? "#09090b" : "#fafafa";
 
   // Empty state — no data yet
   if (!loading && nodes.length <= 1) {
     return (
-      <div className="h-full w-full flex items-center justify-center bg-[#09090b]">
+      <div className="h-full w-full flex items-center justify-center bg-[var(--graph-bg)]">
         <div className="text-center max-w-sm">
           <div className="relative w-16 h-16 mx-auto mb-6">
             <div className="absolute inset-0 rounded-full border border-zinc-800 animate-spin" style={{ animationDuration: "10s" }}>
@@ -125,7 +128,7 @@ export default function GraphCanvas({
   }
 
   return (
-    <div className="relative h-full w-full" style={{ background: "#09090b" }}>
+    <div className="relative h-full w-full" style={{ background: bgColor }}>
       {error ? (
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-400">

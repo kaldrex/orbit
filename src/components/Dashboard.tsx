@@ -48,7 +48,8 @@ export function Dashboard({ user }: DashboardProps) {
   const [selfNodeId, setSelfNodeId] = useState(user.selfNodeId);
   const [stats, setStats] = useState({ totalPeople: 0, goingCold: 0 });
   const [showAddContact, setShowAddContact] = useState(false);
-  const [graphKey, setGraphKey] = useState(0); // increment to force graph refresh
+  const [graphKey, setGraphKey] = useState(0);
+  const [isDark, setIsDark] = useState(true);
 
   // Init self-node if needed
   useEffect(() => {
@@ -85,13 +86,13 @@ export function Dashboard({ user }: DashboardProps) {
     .slice(0, 2);
 
   return (
-    <div className="h-screen bg-[#09090b] text-zinc-100 flex flex-col overflow-hidden">
+    <div className={`h-screen flex flex-col overflow-hidden ${isDark ? "bg-[#09090b] text-zinc-100" : "bg-[#fafafa] text-zinc-900"}`}>
       {/* TopBar */}
-      <header className="flex items-center justify-between px-4 py-2 border-b border-zinc-800/40 shrink-0">
+      <header className={`flex items-center justify-between px-4 py-2 border-b shrink-0 ${isDark ? "border-zinc-800/40" : "border-zinc-200"}`}>
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center text-[9px] font-bold text-black">O</div>
-            <span className="text-[14px] font-semibold tracking-[-0.03em] text-zinc-200">Orbit</span>
+            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold ${isDark ? "bg-white text-black" : "bg-zinc-900 text-white"}`}>O</div>
+            <span className={`text-[14px] font-semibold tracking-[-0.03em] ${isDark ? "text-zinc-200" : "text-zinc-800"}`}>Orbit</span>
           </div>
 
           {/* Filter pills */}
@@ -102,8 +103,8 @@ export function Dashboard({ user }: DashboardProps) {
                 onClick={() => setActiveFilter(f)}
                 className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${
                   activeFilter === f
-                    ? "bg-white text-black"
-                    : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
+                    ? isDark ? "bg-white text-black" : "bg-zinc-900 text-white"
+                    : isDark ? "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50" : "text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100"
                 }`}
               >
                 {f}
@@ -113,9 +114,16 @@ export function Dashboard({ user }: DashboardProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsDark((d) => !d)}
+            className={`h-7 w-7 rounded-md flex items-center justify-center text-[13px] transition-colors ${isDark ? "text-zinc-400 hover:bg-zinc-800" : "text-zinc-500 hover:bg-zinc-200"}`}
+            title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {isDark ? "☀" : "☾"}
+          </button>
           <Button
             onClick={() => setShowAddContact(true)}
-            className="bg-white text-black hover:bg-zinc-200 text-[12px] font-medium h-7 px-3 rounded-md"
+            className={`text-[12px] font-medium h-7 px-3 rounded-md ${isDark ? "bg-white text-black hover:bg-zinc-200" : "bg-zinc-900 text-white hover:bg-zinc-800"}`}
           >
             + Add
           </Button>
@@ -154,10 +162,11 @@ export function Dashboard({ user }: DashboardProps) {
         <div className="flex-1 relative">
           {selfNodeId ? (
             <GraphCanvas
-              key={graphKey}
+              key={`${graphKey}-${isDark}`}
               onSelectPerson={(id) => setSelectedPerson(id)}
               activeFilter={activeFilter}
               selfNodeId={selfNodeId}
+              isDark={isDark}
             />
           ) : (
             <div className="h-full flex items-center justify-center text-zinc-500 text-sm">
@@ -177,7 +186,7 @@ export function Dashboard({ user }: DashboardProps) {
       </div>
 
       {/* BottomBar */}
-      <footer className="flex items-center justify-between px-4 py-1.5 border-t border-zinc-800/40 text-[11px] text-zinc-600 shrink-0">
+      <footer className={`flex items-center justify-between px-4 py-1.5 border-t text-[11px] shrink-0 ${isDark ? "border-zinc-800/40 text-zinc-600" : "border-zinc-200 text-zinc-400"}`}>
         <div className="flex items-center gap-4">
           <span>{stats.totalPeople} People</span>
           <span>{stats.goingCold} Going Cold</span>

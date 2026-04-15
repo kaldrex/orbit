@@ -42,11 +42,10 @@ export function useGraphData(
     if (!raw) return { nodes: [], edges: [] };
 
     const allNodes = toReagraphNodes(raw.nodes, selfNodeId);
-    const prunedLinks = raw.links.filter((l) => {
-      if (l.type === "knows") return true;
-      if (!showSelfEdges) return false;
-      return (l.weight ?? 0) >= 3;
-    });
+    // Show all edges. For large graphs (500+), consider filtering low-weight ones.
+    const prunedLinks = showSelfEdges
+      ? raw.links
+      : raw.links.filter((l) => l.type === "knows" || (l.weight ?? 0) >= 1);
     const allEdges = toReagraphEdges(prunedLinks);
     const filtered = filterReagraphNodes(allNodes, activeFilter, selfNodeId);
     const keep = new Set(filtered.map((n) => n.id));
