@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import PersonPanel from "@/components/PersonPanel";
+import AddContactDialog from "@/components/AddContactDialog";
 
 // Reagraph uses WebGL — must be client-only, no SSR
 const GraphCanvas = dynamic(() => import("@/components/graph/GraphCanvas"), {
@@ -46,6 +47,8 @@ export function Dashboard({ user }: DashboardProps) {
   const [selectedPerson, setSelectedPerson] = useState<string | null>(null);
   const [selfNodeId, setSelfNodeId] = useState(user.selfNodeId);
   const [stats, setStats] = useState({ totalPeople: 0, goingCold: 0 });
+  const [showAddContact, setShowAddContact] = useState(false);
+  const [graphKey, setGraphKey] = useState(0); // increment to force graph refresh
 
   // Init self-node if needed
   useEffect(() => {
@@ -109,7 +112,15 @@ export function Dashboard({ user }: DashboardProps) {
           </div>
         </div>
 
-        <DropdownMenu>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => setShowAddContact(true)}
+            className="bg-white text-black hover:bg-zinc-200 text-[12px] font-medium h-7 px-3 rounded-md"
+          >
+            + Add
+          </Button>
+
+          <DropdownMenu>
           <DropdownMenuTrigger className="relative h-7 w-7 rounded-full focus:outline-none cursor-pointer hover:ring-1 hover:ring-zinc-600 transition-all">
             <Avatar className="h-7 w-7">
               <AvatarFallback className="bg-zinc-800 text-zinc-300 text-[10px] font-medium border border-zinc-700/50">
@@ -128,6 +139,7 @@ export function Dashboard({ user }: DashboardProps) {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        </div>
       </header>
 
       {/* Main area */}
@@ -136,6 +148,7 @@ export function Dashboard({ user }: DashboardProps) {
         <div className="flex-1 relative">
           {selfNodeId ? (
             <GraphCanvas
+              key={graphKey}
               onSelectPerson={(id) => setSelectedPerson(id)}
               activeFilter={activeFilter}
               selfNodeId={selfNodeId}
@@ -165,6 +178,12 @@ export function Dashboard({ user }: DashboardProps) {
         </div>
         <span>Orbit</span>
       </footer>
+
+      <AddContactDialog
+        open={showAddContact}
+        onClose={() => setShowAddContact(false)}
+        onAdded={() => setGraphKey((k) => k + 1)}
+      />
     </div>
   );
 }

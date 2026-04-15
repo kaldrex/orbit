@@ -13,10 +13,9 @@ export async function GET() {
 
   // All Person nodes for this user
   const personRows = await queryNeo4j(userId,
-    `MATCH (p:Person {userId: $userId}) WHERE p.id <> $selfNodeId
+    `MATCH (p:Person {userId: $userId}) WHERE p.category <> "self"
      RETURN p.id AS id, p.name AS name, p.relationship_score AS score, p.category AS category, p.company AS company, p.last_interaction_at AS lastInteractionAt
-     ORDER BY p.relationship_score DESC`,
-    { selfNodeId }
+     ORDER BY p.relationship_score DESC`
   );
 
   const nodes = [

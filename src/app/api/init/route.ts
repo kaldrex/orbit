@@ -55,13 +55,8 @@ export async function POST() {
 
   await writeNeo4j(
     user.id,
-    `CREATE (p:Person {
-      id: $selfNodeId,
-      userId: $userId,
-      name: $displayName,
-      category: "self",
-      relationship_score: 10
-    })`,
+    `MERGE (p:Person {id: $selfNodeId, userId: $userId})
+     ON CREATE SET p.name = $displayName, p.category = "self", p.relationship_score = 10`,
     { selfNodeId, displayName }
   );
 
