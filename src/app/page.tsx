@@ -1,274 +1,291 @@
 "use client";
 
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Particles } from "@/components/ui/particles";
-import { TextAnimate } from "@/components/ui/text-animate";
-import { BorderBeam } from "@/components/ui/border-beam";
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { BorderBeam } from "@/components/ui/border-beam";
+import { WordRotate } from "@/components/ui/word-rotate";
+import { NumberTicker } from "@/components/ui/number-ticker";
+import { AnimatedGradientText } from "@/components/ui/animated-gradient-text";
+import { TextAnimate } from "@/components/ui/text-animate";
+import { AnimatedGridPattern } from "@/components/ui/animated-grid-pattern";
+import { ShimmerButton } from "@/components/ui/shimmer-button";
+import { Particles } from "@/components/ui/particles";
+import { GlassCard, GlassSurface } from "@/components/landing/GlassCard";
+import GrainOverlay from "@/components/landing/GrainOverlay";
+import {
+  Sparkles, Route, Bell, Brain, Hash, FileText, ArrowRight,
+} from "lucide-react";
+import { OrbitLogo } from "@/components/OrbitLogo";
+
+const ConstellationScene = dynamic(
+  () => import("@/components/landing/ConstellationScene"),
+  { ssr: false }
+);
 
 const FEATURES = [
-  {
-    title: "Constellation Graph",
-    description:
-      "Your entire network as an interactive map. High-value contacts at the center, everyone else in orbit.",
-    icon: (
-      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
-      </svg>
-    ),
-  },
-  {
-    title: "Intro Path Finder",
-    description:
-      "The warmest path to anyone through your existing connections. Two hops, ranked by relationship strength.",
-    icon: (
-      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
-      </svg>
-    ),
-  },
-  {
-    title: "Going Cold Alerts",
-    description:
-      "Flags high-value relationships that are fading. 14 days of silence on a key contact triggers an alert.",
-    icon: (
-      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
-      </svg>
-    ),
-  },
-  {
-    title: "Network Intelligence",
-    description:
-      "Blind spots, super-connectors, concentration risks. See the topology of your network, not just the names.",
-    icon: (
-      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5" />
-      </svg>
-    ),
-  },
-  {
-    title: "Topic Resonance",
-    description:
-      "What you and each contact discuss most. Find the people aligned with what you care about.",
-    icon: (
-      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 8.25h15m-16.5 7.5h15m-1.8-13.5l-3.9 19.5m-2.1-19.5l-3.9 19.5" />
-      </svg>
-    ),
-  },
-  {
-    title: "Meeting Briefs",
-    description:
-      "Before every meeting: who they are, shared history, topics, and what to talk about. Automatic.",
-    icon: (
-      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-      </svg>
-    ),
-  },
-];
-
-const CONSTELLATION_NODES = [
-  { x: "50%", y: "50%", size: 6, color: "#fff", glow: "rgba(255,255,255,0.3)", label: "You" },
-  { x: "22%", y: "28%", size: 5, color: "#3B82F6", glow: "rgba(59,130,246,0.25)" },
-  { x: "73%", y: "22%", size: 4, color: "#22C55E", glow: "rgba(34,197,94,0.25)" },
-  { x: "82%", y: "52%", size: 5, color: "#F97316", glow: "rgba(249,115,22,0.25)" },
-  { x: "32%", y: "74%", size: 4, color: "#EAB308", glow: "rgba(234,179,8,0.25)" },
-  { x: "14%", y: "52%", size: 3, color: "#06B6D4", glow: "rgba(6,182,212,0.2)" },
-  { x: "58%", y: "16%", size: 3, color: "#EC4899", glow: "rgba(236,72,153,0.2)" },
-  { x: "65%", y: "72%", size: 4, color: "#8B5CF6", glow: "rgba(139,92,246,0.25)" },
-  { x: "40%", y: "88%", size: 2.5, color: "#14B8A6", glow: "rgba(20,184,166,0.15)" },
-  { x: "88%", y: "34%", size: 2.5, color: "#EF4444", glow: "rgba(239,68,68,0.15)" },
-  { x: "10%", y: "78%", size: 2, color: "#64748B", glow: "rgba(100,116,139,0.1)" },
-  { x: "78%", y: "82%", size: 2, color: "#64748B", glow: "rgba(100,116,139,0.1)" },
-];
-
-const EDGES = [
-  ["50%","50%","22%","28%"], ["50%","50%","73%","22%"], ["50%","50%","82%","52%"],
-  ["50%","50%","32%","74%"], ["50%","50%","14%","52%"], ["50%","50%","58%","16%"],
-  ["50%","50%","65%","72%"], ["22%","28%","58%","16%"], ["73%","22%","82%","52%"],
-  ["32%","74%","65%","72%"], ["14%","52%","22%","28%"], ["82%","52%","78%","82%"],
+  { title: "Constellation Graph", desc: "Your entire network as a living, interactive map — high-value contacts at center, everyone else in orbit.", icon: Sparkles, accent: "#3b82f6" },
+  { title: "Intro Path Finder", desc: "The warmest path to anyone. Two hops through existing connections, ranked by relationship strength.", icon: Route, accent: "#22c55e" },
+  { title: "Going Cold Alerts", desc: "Flags high-value relationships that are fading. 14 days of silence on a key contact triggers an alert.", icon: Bell, accent: "#f97316" },
+  { title: "Network Intelligence", desc: "Blind spots, super-connectors, concentration risks. See the topology of your network, not just names.", icon: Brain, accent: "#8b5cf6" },
+  { title: "Topic Resonance", desc: "What you and each contact discuss most. Find the people aligned with what you care about right now.", icon: Hash, accent: "#06b6d4" },
+  { title: "Meeting Briefs", desc: "Before every meeting: who they are, shared history, topics to raise, and what to talk about. Automatic.", icon: FileText, accent: "#ec4899" },
 ];
 
 export default function LandingPage() {
   const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  useEffect(() => { setMounted(true); }, []);
 
   return (
-    <div className="min-h-screen bg-[#09090b] text-zinc-100 overflow-hidden">
-      {/* Particles — white, subtle */}
-      {mounted && (
-        <Particles
-          className="fixed inset-0 z-0"
-          quantity={60}
-          color="#ffffff"
-          size={0.3}
-          staticity={50}
-          ease={70}
-        />
-      )}
+    <div className="min-h-screen text-[#e4e4e7] overflow-hidden" style={{ background: "radial-gradient(ellipse 80% 60% at 50% 40%, #0d1117 0%, #080a0f 40%, #060709 100%)" }}>
+      <GrainOverlay />
 
-      {/* Subtle radial glow — warm, not purple */}
-      <div className="fixed inset-0 z-0 pointer-events-none">
-        <div className="absolute top-[-30%] left-[50%] -translate-x-1/2 w-[800px] h-[800px] rounded-full bg-white/[0.015] blur-[120px]" />
-      </div>
+      <style jsx global>{`
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(16px); filter: blur(6px); }
+          to { opacity: 1; transform: translateY(0); filter: blur(0); }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        .anim-fade-in { animation: fadeIn 0.6s ease-out forwards; }
+        .anim-fade-in-up { animation: fadeInUp 0.7s cubic-bezier(0.16,1,0.3,1) forwards; }
+        .anim-delay-1 { animation-delay: 0.1s; opacity: 0; }
+        .anim-delay-2 { animation-delay: 0.3s; opacity: 0; }
+        .anim-delay-3 { animation-delay: 0.5s; opacity: 0; }
+        .anim-delay-4 { animation-delay: 0.7s; opacity: 0; }
+        .anim-delay-5 { animation-delay: 0.9s; opacity: 0; }
+      `}</style>
 
-      {/* Nav */}
-      <nav className="relative z-10 flex items-center justify-between px-8 py-5 max-w-7xl mx-auto">
-        <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-full bg-white flex items-center justify-center text-[11px] font-bold text-black">
-            O
+      {/* ═══ NAV ═══ */}
+      <nav
+        className="fixed top-0 left-0 right-0 z-50 border-b border-white/[0.06] anim-fade-in anim-delay-1"
+        style={{ background: "rgba(10,10,12,0.7)", backdropFilter: "blur(16px) saturate(150%)", WebkitBackdropFilter: "blur(16px) saturate(150%)" }}
+      >
+        <div className="max-w-[1200px] mx-auto flex items-center justify-between px-6 h-14 relative">
+          <div className="flex items-center gap-2">
+            <OrbitLogo size={26} />
+            <span className="text-[15px] font-semibold tracking-[-0.02em] text-white">Orbit</span>
           </div>
-          <span className="text-[16px] font-semibold tracking-[-0.03em]">Orbit</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <Link href="/login">
-            <Button
-              variant="ghost"
-              className="text-zinc-400 hover:text-white text-[13px] font-medium h-9 px-4"
-            >
-              Sign in
-            </Button>
-          </Link>
-          <Link href="/signup">
-            <Button className="bg-white text-black hover:bg-zinc-200 text-[13px] font-medium h-9 px-5 rounded-lg">
-              Get started
-            </Button>
-          </Link>
+          <div className="hidden md:flex items-center gap-7 text-[13px] text-zinc-500 absolute left-1/2 -translate-x-1/2">
+            <span className="hover:text-zinc-300 transition-colors cursor-pointer">Features</span>
+            <span className="hover:text-zinc-300 transition-colors cursor-pointer">How it works</span>
+            <span className="hover:text-zinc-300 transition-colors cursor-pointer">Pricing</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Link href="/login">
+              <Button variant="ghost" className="text-zinc-500 hover:text-white text-[13px] h-8 px-3">Sign in</Button>
+            </Link>
+            <Link href="/signup">
+              <Button className="bg-white text-black hover:bg-zinc-200 text-[12px] font-semibold h-8 px-4 rounded-lg">Get started</Button>
+            </Link>
+          </div>
         </div>
       </nav>
 
-      {/* Hero */}
-      <section className="relative z-10 flex flex-col items-center text-center px-6 pt-24 pb-28 max-w-4xl mx-auto">
-        <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900/50 px-3.5 py-1 text-[12px] text-zinc-400 backdrop-blur-sm tracking-wide uppercase font-medium">
-          <span className="w-1 h-1 rounded-full bg-emerald-400" />
-          Relationship Intelligence
+      {/* ═══ HERO ═══ */}
+      <section className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden">
+        {/* Atmospheric color washes */}
+        <div className="pointer-events-none absolute inset-0 z-[2]">
+          <div className="absolute top-[-10%] left-[-5%] w-[500px] h-[500px] rounded-full" style={{ background: "radial-gradient(circle, rgba(59,130,246,0.06) 0%, transparent 60%)" }} />
+          <div className="absolute top-[-5%] right-[-5%] w-[450px] h-[450px] rounded-full" style={{ background: "radial-gradient(circle, rgba(124,58,237,0.05) 0%, transparent 60%)" }} />
+          <div className="absolute bottom-[-10%] left-[10%] w-[500px] h-[400px] rounded-full" style={{ background: "radial-gradient(circle, rgba(6,182,212,0.04) 0%, transparent 60%)" }} />
+          <div className="absolute bottom-[-5%] right-[5%] w-[400px] h-[400px] rounded-full" style={{ background: "radial-gradient(circle, rgba(59,130,246,0.035) 0%, transparent 60%)" }} />
         </div>
 
-        <h1 className="text-[clamp(2.8rem,6.5vw,5.2rem)] font-bold tracking-[-0.05em] leading-[0.95] mb-6">
-          <TextAnimate animation="blurInUp" by="word" delay={0.04}>
+        {/* Three.js scene */}
+        <div className="absolute inset-0 z-[1] anim-fade-in anim-delay-1">
+          {mounted && <ConstellationScene />}
+        </div>
+
+        {/* Text readability veil */}
+        <div className="pointer-events-none absolute inset-0 z-[5]" style={{ background: "radial-gradient(ellipse 55% 45% at 50% 50%, rgba(6,7,9,0.55) 0%, transparent 70%)" }} />
+
+        {/* Hero copy */}
+        <div className="relative z-10 flex flex-col items-center text-center px-6 max-w-3xl">
+          {/* Badge with AnimatedGradientText */}
+          <div className="mb-8 anim-fade-in-up anim-delay-2">
+            <span className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-black/40 px-4 py-1.5 backdrop-blur-md">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(34,197,94,0.5)]" />
+              <AnimatedGradientText
+                speed={0.5}
+                colorFrom="#a1a1aa"
+                colorTo="#3b82f6"
+                className="text-[11px] tracking-[0.08em] uppercase font-medium"
+              >
+                Relationship Intelligence
+              </AnimatedGradientText>
+            </span>
+          </div>
+
+          <h1 className="text-[clamp(2.8rem,5.5vw,4.5rem)] font-bold tracking-[-0.04em] leading-[1.05] mb-6 text-white anim-fade-in-up anim-delay-3" style={{ textShadow: "0 2px 20px rgba(0,0,0,0.5), 0 0px 40px rgba(0,0,0,0.3)" }}>
             Your network is your
-          </TextAnimate>
-          <br />
-          <span className="font-[family-name:var(--font-serif)] italic font-normal text-zinc-300">
-            net worth
-          </span>
-        </h1>
+            <br />
+            <span className="font-[family-name:var(--font-serif)] italic font-normal text-zinc-400">
+              net worth
+            </span>
+          </h1>
 
-        <p className="text-[17px] text-zinc-500 max-w-lg mb-10 leading-relaxed font-light">
-          Orbit maps every relationship into a living constellation — surfacing warm intros,
-          fading connections, and hidden intelligence.
-        </p>
+          <p className="text-[16px] text-zinc-400 max-w-[460px] leading-[1.7] font-light mb-10 anim-fade-in-up anim-delay-4" style={{ textShadow: "0 1px 12px rgba(0,0,0,0.5)" }}>
+            Orbit maps every relationship into a living constellation —
+            surfacing warm intros, fading connections, and intelligence
+            your CRM will never see.
+          </p>
 
-        <div className="flex items-center gap-4">
-          <Link href="/signup">
-            <Button className="bg-white text-black hover:bg-zinc-200 text-[14px] font-medium h-11 px-8 rounded-lg">
-              Start for free
-            </Button>
-          </Link>
-          <span className="text-[12px] text-zinc-600">No credit card required</span>
-        </div>
-      </section>
-
-      {/* Constellation preview */}
-      <section className="relative z-10 max-w-4xl mx-auto px-6 pb-32">
-        <div className="relative rounded-2xl border border-zinc-800/60 bg-zinc-950/50 p-1 overflow-hidden">
-          <BorderBeam size={250} duration={15} colorFrom="#ffffff" colorTo="#3b82f6" />
-          <div className="rounded-xl bg-[#0a0a0f] p-6 min-h-[380px] flex items-center justify-center relative">
-            <div className="relative w-full max-w-md aspect-square">
-              {/* Edges */}
-              <svg className="absolute inset-0 w-full h-full" xmlns="http://www.w3.org/2000/svg">
-                {EDGES.map(([x1, y1, x2, y2], i) => (
-                  <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
-                ))}
-              </svg>
-              {/* Nodes */}
-              {CONSTELLATION_NODES.map((node, i) => (
-                <div
-                  key={i}
-                  className="absolute -translate-x-1/2 -translate-y-1/2"
-                  style={{ left: node.x, top: node.y }}
-                >
-                  <div
-                    className="rounded-full animate-pulse"
-                    style={{
-                      width: `${node.size * 2.5}px`,
-                      height: `${node.size * 2.5}px`,
-                      backgroundColor: node.color,
-                      boxShadow: `0 0 ${node.size * 4}px ${node.glow}`,
-                      animationDuration: `${3 + i * 0.4}s`,
-                    }}
-                  />
-                  {node.label && (
-                    <span className="absolute top-full left-1/2 -translate-x-1/2 mt-2 text-[10px] text-zinc-500 whitespace-nowrap">
-                      {node.label}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
+          <div className="flex flex-col items-center gap-3 anim-fade-in-up anim-delay-5">
+            <Link href="/signup">
+              <Button className="bg-white text-black hover:bg-zinc-200 text-[14px] font-semibold h-12 px-8 rounded-xl shadow-[0_0_30px_rgba(255,255,255,0.06)] hover:shadow-[0_0_40px_rgba(255,255,255,0.1)] transition-all duration-300 hover:-translate-y-0.5 group">
+                Map your network
+                <ArrowRight className="w-4 h-4 ml-1.5 group-hover:translate-x-0.5 transition-transform" />
+              </Button>
+            </Link>
+            <span className="text-[11px] text-zinc-700">No credit card required</span>
           </div>
         </div>
       </section>
 
-      {/* Features */}
-      <section className="relative z-10 max-w-5xl mx-auto px-6 pb-32">
-        <div className="text-center mb-14">
-          <h2 className="text-[28px] font-bold tracking-[-0.04em] mb-3">
-            Intelligence, not just{" "}
-            <span className="font-[family-name:var(--font-serif)] italic font-normal text-zinc-400">
-              contacts
-            </span>
-          </h2>
-          <p className="text-zinc-500 text-[15px] max-w-md mx-auto">
-            Orbit understands the topology of your relationships.
-          </p>
-        </div>
+      {/* ═══ FEATURES with AnimatedGridPattern ═══ */}
+      <section className="relative z-10 max-w-[1100px] mx-auto px-6 py-32">
+        <AnimatedGridPattern
+          numSquares={20}
+          maxOpacity={0.03}
+          duration={4}
+          repeatDelay={2}
+          className="absolute inset-0 z-0 [mask-image:radial-gradient(500px_circle_at_center,white,transparent)]"
+        />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-zinc-800/30 rounded-2xl overflow-hidden border border-zinc-800/40">
-          {FEATURES.map((feature, i) => (
-            <div
-              key={i}
-              className="bg-[#09090b] p-7 hover:bg-zinc-900/50 transition-colors duration-200"
+        <div className="relative z-10">
+          <div className="text-center mb-16">
+            <h2 className="text-[30px] font-bold tracking-[-0.03em] mb-3 text-white">
+              Intelligence, not just{" "}
+              <span className="font-[family-name:var(--font-serif)] italic font-normal text-zinc-500">contacts</span>
+            </h2>
+            <TextAnimate
+              as="p"
+              by="word"
+              animation="blurIn"
+              startOnView
+              once
+              delay={0.15}
+              className="text-zinc-600 text-[15px] max-w-md mx-auto leading-relaxed"
             >
-              <div className="w-9 h-9 rounded-lg bg-zinc-800/50 flex items-center justify-center text-zinc-400 mb-4">
-                {feature.icon}
+              Orbit understands the topology of your relationships — not just who you know, but how well.
+            </TextAnimate>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px rounded-2xl overflow-hidden bg-white/[0.03] border border-white/[0.04]">
+            {FEATURES.map((f, i) => (
+              <div key={i} className="group relative bg-[#0a0a0c] p-7 hover:bg-white/[0.01] transition-colors duration-500">
+                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" style={{ background: `radial-gradient(250px at 50% 0%, ${f.accent}06, transparent 70%)` }} />
+                <div className="relative">
+                  <div className="w-9 h-9 rounded-lg flex items-center justify-center mb-4 border border-white/[0.06] bg-white/[0.02]">
+                    <f.icon className="w-4 h-4" style={{ color: f.accent }} strokeWidth={1.5} />
+                  </div>
+                  <h3 className="text-[14px] font-semibold mb-1.5 tracking-[-0.01em] text-zinc-200 group-hover:text-white transition-colors">{f.title}</h3>
+                  <p className="text-[13px] text-zinc-600 leading-[1.65] group-hover:text-zinc-500 transition-colors">{f.desc}</p>
+                </div>
               </div>
-              <h3 className="text-[14px] font-semibold mb-1.5 tracking-[-0.01em] text-zinc-200">
-                {feature.title}
-              </h3>
-              <p className="text-[13px] text-zinc-500 leading-relaxed">
-                {feature.description}
-              </p>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ═══ METRICS with NumberTicker ═══ */}
+      <section className="relative z-10 max-w-[900px] mx-auto px-6 pb-28">
+        <div className="h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent mb-28" />
+        <div className="grid grid-cols-3 gap-8">
+          <div className="text-center">
+            <div className="text-[36px] font-bold tracking-[-0.04em] text-white mb-1">
+              <NumberTicker value={112} className="text-[36px] font-bold tracking-[-0.04em] text-white" />
+              <span>+</span>
             </div>
-          ))}
+            <div className="text-[13px] text-zinc-400 font-medium">Contacts mapped</div>
+            <div className="text-[11px] text-zinc-700 mt-0.5">in first 24 hours</div>
+          </div>
+          <div className="text-center">
+            <div className="text-[36px] font-bold tracking-[-0.04em] text-white mb-1">
+              <NumberTicker value={6} className="text-[36px] font-bold tracking-[-0.04em] text-white" />
+            </div>
+            <div className="text-[13px] text-zinc-400 font-medium">AI agent tools</div>
+            <div className="text-[11px] text-zinc-700 mt-0.5">via OpenClaw plugin</div>
+          </div>
+          <div className="text-center">
+            <div className="text-[36px] font-bold tracking-[-0.04em] text-white mb-1">
+              <NumberTicker value={2} className="text-[36px] font-bold tracking-[-0.04em] text-white" />
+              <span>-hop</span>
+            </div>
+            <div className="text-[13px] text-zinc-400 font-medium">Intro paths</div>
+            <div className="text-[11px] text-zinc-700 mt-0.5">through warm connections</div>
+          </div>
         </div>
       </section>
 
-      {/* Bottom CTA */}
-      <section className="relative z-10 max-w-2xl mx-auto px-6 pb-20 text-center">
-        <div className="border border-zinc-800/50 rounded-2xl bg-zinc-900/30 p-12">
-          <h2 className="text-[22px] font-bold tracking-[-0.03em] mb-3">
-            See your network clearly
-          </h2>
-          <p className="text-zinc-500 text-[14px] mb-7">
-            Built for founders who take relationships seriously.
-          </p>
-          <Link href="/signup">
-            <Button className="bg-white text-black hover:bg-zinc-200 text-[14px] font-medium h-11 px-8 rounded-lg">
-              Get started for free
-            </Button>
+      {/* ═══ HOW IT WORKS with Particles ═══ */}
+      <section className="relative z-10 max-w-[1000px] mx-auto px-6 pb-32">
+        {mounted && (
+          <Particles
+            className="absolute inset-0 z-0"
+            quantity={30}
+            staticity={80}
+            ease={80}
+            size={0.3}
+            color="#3b82f6"
+          />
+        )}
+        <div className="relative z-10">
+          <div className="text-center mb-14">
+            <h2 className="text-[28px] font-bold tracking-[-0.03em] mb-3 text-white">
+              Three steps to{" "}
+              <span className="font-[family-name:var(--font-serif)] italic font-normal text-zinc-500">clarity</span>
+            </h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {[
+              { step: "01", title: "Connect your agent", desc: "Install the OpenClaw plugin. Your AI agent starts observing conversations and pushing contacts to Orbit." },
+              { step: "02", title: "Watch the graph grow", desc: "Every interaction becomes a node, every relationship an edge. The constellation builds itself." },
+              { step: "03", title: "Act on intelligence", desc: "Cold alerts, warm intro paths, meeting briefs — Orbit tells you what to do and when." },
+            ].map((item, i) => (
+              <GlassSurface key={i} className="p-6 h-full hover:border-white/[0.1] transition-colors duration-500">
+                <div className="text-[11px] font-semibold tracking-[0.15em] text-zinc-700 uppercase mb-4">{item.step}</div>
+                <h3 className="text-[15px] font-semibold mb-2 text-zinc-200">{item.title}</h3>
+                <p className="text-[13px] text-zinc-600 leading-[1.65]">{item.desc}</p>
+              </GlassSurface>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ═══ BOTTOM CTA with ShimmerButton ═══ */}
+      <section className="relative z-10 max-w-[700px] mx-auto px-6 pb-24">
+        <GlassCard className="p-14 text-center relative overflow-hidden">
+          <BorderBeam size={200} duration={20} colorFrom="rgba(255,255,255,0.08)" colorTo="rgba(59,130,246,0.05)" />
+          <h2 className="text-[24px] font-bold tracking-[-0.03em] mb-3 relative text-white">See your network clearly</h2>
+          <p className="text-zinc-500 text-[14px] mb-8 relative">Built for founders who take relationships seriously.</p>
+          <Link href="/signup" className="relative inline-block">
+            <ShimmerButton
+              shimmerColor="rgba(255,255,255,0.08)"
+              shimmerSize="0.04em"
+              shimmerDuration="4s"
+              background="rgba(255,255,255,1)"
+              borderRadius="12px"
+              className="text-black text-[14px] font-semibold h-11 px-8"
+            >
+              Map your network <ArrowRight className="w-4 h-4 ml-1.5 inline" />
+            </ShimmerButton>
           </Link>
-        </div>
+        </GlassCard>
       </section>
 
-      {/* Footer */}
-      <footer className="relative z-10 border-t border-zinc-800/30 py-8 text-center">
-        <div className="flex items-center justify-center gap-2 text-[13px] text-zinc-600">
-          <div className="w-3.5 h-3.5 rounded-full bg-white/80" />
-          Orbit
+      {/* ═══ FOOTER ═══ */}
+      <footer className="relative z-10 border-t border-white/[0.04] py-8">
+        <div className="max-w-[1200px] mx-auto px-6 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-[13px] text-zinc-700">
+            <OrbitLogo size={16} />
+            Orbit
+          </div>
+          <div className="text-[11px] text-zinc-800">&copy; 2026</div>
         </div>
       </footer>
     </div>
