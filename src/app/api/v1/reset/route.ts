@@ -1,21 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { writeNeo4j } from "@/lib/neo4j";
 import { getAgentOrSessionAuth } from "@/lib/api-auth";
+import { createHash } from "crypto";
 
 export const dynamic = "force-dynamic";
 
 /**
  * POST /api/v1/reset — Delete all graph data for the authenticated user.
- * Keeps the self-node. Requires confirmation body: { confirm: true }
+ * Requires: { confirm: "DELETE_ALL_MY_DATA" }
+ * Only callable with session auth (not API keys) for extra safety.
  */
 export async function POST(request: NextRequest) {
-  const auth = await getAgentOrSessionAuth(request);
-  if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Session auth only — API keys cannot reset data
+  const { getAuthContext } = await import("@/lib/auth");
+  const auth = await getAuthContext();
+  if (!auth) return NextResponse.json({ error: "Unauthorized. Session auth required — API keys cannot reset data." }, { status: 401 });
 
   const body = await request.json();
-  if (!body.confirm) return NextResponse.json({ error: "Pass { confirm: true } to confirm deletion" }, { status: 400 });
+  if (body.confirm !== "DELETE_ALL_MY_DATA") {
+    return NextResponse.json({
+      error: "Pass { confirm: \"DELETE_ALL_MY_DATA\" } to confirm. This is irreversible.",
+    }, { status: 400 });
+  }
 
-  const { userId, selfNodeId } = auth;
+  const { userId } = auth;
 
   // Delete all edges first
   await writeNeo4j(userId,

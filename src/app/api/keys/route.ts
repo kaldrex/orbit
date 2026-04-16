@@ -6,15 +6,9 @@ import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
-/**
- * GET /api/keys — list user's API keys (prefix only, no secrets)
- */
-export async function GET() {
-  const auth = await getAuthContext();
-  if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
+async function getSupabase() {
   const cookieStore = await cookies();
-  const supabase = createServerClient(
+  return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
@@ -28,7 +22,16 @@ export async function GET() {
       },
     }
   );
+}
 
+/**
+ * GET /api/keys — list user's API keys (prefix only, no secrets)
+ */
+export async function GET() {
+  const auth = await getAuthContext();
+  if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const supabase = await getSupabase();
   const { data: keys } = await supabase
     .from("api_keys")
     .select("id, name, key_prefix, scopes, last_used_at, created_at")
@@ -39,8 +42,8 @@ export async function GET() {
 }
 
 /**
- * POST /api/keys — generate a new API key
- * Returns the plaintext key ONCE. User must save it.
+ * POST /api/keys — generate a new API key and store its hash
+ * Returns the plaintext key ONCE.
  */
 export async function POST(request: NextRequest) {
   const auth = await getAuthContext();
@@ -49,12 +52,49 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const name = body.name || "Untitled key";
 
-  const { key, prefix } = await generateApiKey(auth.userId, name);
+  const { key, hash, prefix } = await generateApiKey(auth.userId, name);
+
+  const supabase = await getSupabase();
+  const { error } = await supabase.from("api_keys").insert({
+    user_id: auth.userId,
+    name,
+    key_hash: hash,
+    key_prefix: prefix,
+  });
+
+  if (error) {
+    return NextResponse.json({ error: "Failed to create key: " + error.message }, { status: 500 });
+  }
 
   return NextResponse.json({
-    key, // shown once, never stored
+    key,
     prefix,
     name,
     message: "Save this key — you won't be able to see it again.",
   });
+}
+
+/**
+ * DELETE /api/keys — revoke an API key by ID
+ * Body: { id: "key-uuid" }
+ */
+export async function DELETE(request: NextRequest) {
+  const auth = await getAuthContext();
+  if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await request.json();
+  if (!body.id) return NextResponse.json({ error: "Key ID required" }, { status: 400 });
+
+  const supabase = await getSupabase();
+  const { error } = await supabase
+    .from("api_keys")
+    .delete()
+    .eq("id", body.id)
+    .eq("user_id", auth.userId); // RLS ensures they can only delete their own
+
+  if (error) {
+    return NextResponse.json({ error: "Failed to revoke key" }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true, message: "API key revoked" });
 }
