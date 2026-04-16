@@ -81,7 +81,12 @@ export async function POST(request: NextRequest) {
     await promise;
   }
 
-  return NextResponse.json({ ok: true, accepted });
+  return NextResponse.json({
+    ok: true,
+    accepted,
+    // Backward compat: old callers may read stats
+    stats: { personsCreated: 0, personsUpdated: 0, interactionsCreated: accepted.interactions, edgesCreated: 0 },
+  });
 }
 
 async function processIngest(
@@ -108,8 +113,12 @@ async function processIngest(
 ) {
   try {
     // Step 1: Batch upsert person metadata
-    const personItems: PersonBatchItem[] = persons
-      .filter((p) => p.name)
+    // Deduplicate persons by lowercased name (last-writer-wins on metadata)
+    const personMap = new Map<string, typeof persons[number]>();
+    for (const p of persons) {
+      if (p.name) personMap.set(p.name.trim().toLowerCase(), p);
+    }
+    const personItems: PersonBatchItem[] = Array.from(personMap.values())
       .map((p) => ({
         name: p.name!.trim(),
         newId: `p_${crypto.randomUUID().slice(0, 8)}`,
