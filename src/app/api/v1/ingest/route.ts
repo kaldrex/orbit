@@ -74,7 +74,8 @@ export async function POST(request: NextRequest) {
         `CREATE (p:Person {
           id: $personId, userId: $userId, name: $name,
           company: $company, email: $email, category: $category,
-          title: $title, relationship_score: 1, source: "agent"
+          title: $title, relationship_to_me: $relationshipToMe,
+          relationship_score: 1, source: "agent"
         })`,
         {
           personId,
@@ -83,6 +84,7 @@ export async function POST(request: NextRequest) {
           email: p.email || null,
           category: p.category || "other",
           title: p.title || null,
+          relationshipToMe: p.relationship_to_me || null,
         }
       );
       stats.personsCreated++;
@@ -128,7 +130,9 @@ export async function POST(request: NextRequest) {
            channel: $channel,
            timestamp: $timestamp,
            summary: $summary,
-           topic_summary: $topic
+           topic_summary: $topic,
+           relationship_context: $relationshipContext,
+           sentiment: $sentiment
          }]->(b)`,
         {
           selfNodeId,
@@ -137,6 +141,8 @@ export async function POST(request: NextRequest) {
           timestamp: ix.timestamp || new Date().toISOString(),
           summary: ix.summary || null,
           topic: ix.topic || null,
+          relationshipContext: ix.relationship_context || null,
+          sentiment: ix.sentiment || null,
         }
       );
       stats.interactionsCreated++;
@@ -154,14 +160,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // If multiple participants, create KNOWS edges between them (co-presence)
+    // If multiple participants, create KNOWS edges between them with context
     if (resolvedIds.length >= 2) {
       for (let i = 0; i < resolvedIds.length; i++) {
         for (let j = i + 1; j < resolvedIds.length; j++) {
           await writeNeo4j(userId,
             `MATCH (a:Person {id: $idA, userId: $userId}), (b:Person {id: $idB, userId: $userId})
-             MERGE (a)-[:KNOWS {source: $channel}]->(b)`,
-            { idA: resolvedIds[i], idB: resolvedIds[j], channel: ix.channel || "co-presence" }
+             MERGE (a)-[r:KNOWS]->(b)
+             ON CREATE SET r.source = $channel, r.context = $context, r.created_at = datetime()
+             ON MATCH SET r.context = CASE WHEN $context IS NOT NULL AND r.context IS NOT NULL THEN r.context + " | " + $context WHEN $context IS NOT NULL THEN $context ELSE r.context END`,
+            {
+              idA: resolvedIds[i],
+              idB: resolvedIds[j],
+              channel: ix.channel || "co-presence",
+              context: ix.connection_context || ix.summary || null,
+            }
           );
           stats.edgesCreated++;
         }

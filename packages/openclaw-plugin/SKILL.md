@@ -1,75 +1,146 @@
 ---
 name: orbit
-description: Relationship intelligence — search contacts, get briefs, push observed interactions to the graph. Use orbit tools for anything about people, relationships, or networking.
+description: Relationship intelligence — build and query the user's relationship graph. Every contact needs context. Every connection needs reasoning.
 metadata: {"openclaw":{"emoji":"🌐"}}
 ---
 
 # Orbit — Relationship Intelligence
 
-You have access to your user's relationship graph via the Orbit plugin. Use it whenever:
-- Someone asks about a person, contact, or relationship
-- You observe a conversation and want to record who was involved
-- You need to find warm intro paths or going-cold contacts
-- You're preparing for a meeting and need background on attendees
+You manage the user's relationship graph via Orbit. This is NOT a contact list. It's a map of relationships with reasoning — who they know, how they know them, why it matters, and how to reach people through connections.
 
-## Your Tools
+## Core Rules
 
-### READ (use freely, no side effects)
+### NEVER dump names without context
 
-- **orbit_lookup(query)** — search contacts by name or company. Start here.
-- **orbit_person_card(person_id)** — full profile: score, interactions, shared connections. Use after lookup.
-- **orbit_going_cold(limit, days)** — contacts going cold. Surface proactively in morning messages.
-- **orbit_graph_stats()** — total contacts, warm count, going cold count.
+BAD:
+```json
+{ "participants": ["John Smith"], "channel": "memory", "summary": "Know this person" }
+```
 
-### WRITE (updates the graph)
-
-- **orbit_ingest(interactions, persons?)** — THE MAIN WRITE PATH. After you observe any conversation, push it here. Include all participants, the channel, a summary, and the topic. Orbit auto-creates people, logs interactions, and builds cross-connections.
-- **orbit_log_interaction(person_id, channel, summary)** — log a single interaction. Use for quick DM exchanges.
-
-## When to Write
-
-**Push to orbit_ingest after you observe:**
-- A Slack DM or thread with named participants
-- An email you read or sent
-- A calendar meeting that happened
-- A WhatsApp/Telegram/iMessage conversation
-- Any interaction where you can identify who was involved
-
-**Format for ingest:**
+GOOD:
 ```json
 {
-  "interactions": [{
-    "participants": ["Jane Smith", "Bob Chen"],
-    "channel": "slack",
-    "summary": "Discussed Series B timeline",
-    "topic": "fundraising"
-  }],
+  "participants": ["John Smith"],
+  "channel": "whatsapp",
+  "summary": "Regular DM conversations about crypto markets and DeFi projects",
+  "topic": "crypto",
+  "relationship_context": "Met at ETHGlobal hackathon 2025. He's building a DeFi protocol. Good technical contact for web3 questions."
+}
+```
+
+### ALWAYS group people who know each other in the SAME interaction
+
+If 3 people were in the same meeting, ONE interaction with all 3 as participants — not 3 separate single-person calls. This is how Orbit knows they're connected to EACH OTHER, not just to you.
+
+BAD (creates 3 spokes, no cross-connections):
+```json
+{ "participants": ["Alice"], "channel": "meeting" }
+{ "participants": ["Bob"], "channel": "meeting" }
+{ "participants": ["Carol"], "channel": "meeting" }
+```
+
+GOOD (creates 3 cross-connections: Alice↔Bob, Alice↔Carol, Bob↔Carol):
+```json
+{
+  "participants": ["Alice", "Bob", "Carol"],
+  "channel": "meeting",
+  "summary": "Quarterly board meeting — discussed Series B timeline and hiring plan",
+  "topic": "fundraising",
+  "connection_context": "Board members who meet quarterly. Alice leads the round, Bob is existing investor, Carol is independent director."
+}
+```
+
+### ALWAYS include relationship_to_me on persons
+
+When you add metadata about a person, explain the relationship:
+
+```json
+{
   "persons": [{
-    "name": "Jane Smith",
-    "company": "Sequoia",
+    "name": "Sarah Chen",
+    "company": "Sequoia Capital",
     "category": "investor",
-    "title": "Partner"
+    "title": "Partner",
+    "relationship_to_me": "Lead investor in our seed round. Monthly check-ins. Go-to for fundraising advice and intro requests."
   }]
 }
 ```
 
-Include `persons` metadata when you know it. Orbit will auto-create unknown people and update existing ones.
+## Your Tools
 
-## When to Read
+### READ
+- **orbit_lookup(query)** — search by name/company
+- **orbit_person_card(person_id)** — full profile with interactions and connections
+- **orbit_going_cold(limit, days)** — contacts fading. Surface proactively.
+- **orbit_graph_stats()** — totals
 
-- "Who's [name]?" → `orbit_lookup` → `orbit_person_card`
-- "Brief me" / "What's my day?" → `orbit_going_cold` + any meeting context you have
-- "How do I reach [person]?" → `orbit_lookup` → check shared connections in person card
-- "Who's going cold?" → `orbit_going_cold`
-- "How many contacts do I have?" → `orbit_graph_stats`
+### WRITE
+- **orbit_ingest(interactions, persons?)** — THE main write path. Schema below.
+- **orbit_log_interaction(person_id, channel, summary)** — quick single interaction
+
+## Ingest Schema
+
+```json
+{
+  "interactions": [{
+    "participants": ["Name1", "Name2"],       // REQUIRED. Group co-participants together.
+    "channel": "slack|whatsapp|email|meeting|telegram|linear|github",
+    "summary": "What happened in this interaction",
+    "topic": "fundraising|hiring|product|tech|personal|business",
+    "relationship_context": "Why this interaction matters for the relationship",
+    "connection_context": "How the participants know each other (for KNOWS edges)",
+    "sentiment": "positive|neutral|negative"
+  }],
+  "persons": [{
+    "name": "Full Name",
+    "company": "Company",
+    "category": "investor|team|sponsor|fellow|media|community|founder|friend|press|other",
+    "title": "Job Title",
+    "relationship_to_me": "How and why I know this person. What value does this relationship have."
+  }]
+}
+```
+
+## When Ingesting from Data Sources
+
+### WhatsApp / Telegram / iMessage
+- Parse conversation history. For each DM: who, how often, what topics.
+- For group chats: ALL members go in ONE interaction with connection_context explaining the group.
+- Set relationship_context: "Active WhatsApp DM, ~50 messages/month, mostly about X"
+
+### Gmail
+- From/To/CC are relationship signals. Everyone CC'd on the same email KNOWS each other.
+- Thread subject = topic. Sender/recipient pattern = relationship strength.
+- Set relationship_context: "Regular email correspondent, typically about X"
+
+### Calendar
+- Every meeting attendee goes in ONE interaction. They all know each other.
+- connection_context: "Co-attendees at [meeting name]"
+- Recurring meetings = stronger relationship signal
+
+### Slack
+- Channel membership = weak KNOWS signal
+- DM conversations = strong interaction signal
+- Thread participation = people working together
+
+### Linear / GitHub
+- Issue assignees/commenters working on the same project know each other
+- connection_context: "Collaborators on [project name]"
 
 ## Categories
 
-Contacts are categorized: investor, sponsor, media, team, fellow, community, gov, founder, friend, press, other. When you ingest a new person, set the category if you can infer it. If unsure, leave it as "other" — the user can recategorize later.
+Use these precisely:
+- **team** — people who work with/for the user
+- **investor** — VCs, angels, fund managers
+- **sponsor** — companies/people sponsoring events or initiatives
+- **fellow** — peers in the same industry, conference connections
+- **media** — journalists, content creators, PR contacts
+- **community** — community leaders, event organizers
+- **founder** — other founders, entrepreneurs
+- **friend** — personal friends, non-business
+- **press** — press/media contacts specifically for coverage
+- **other** — can't determine. AVOID this — always try to categorize.
 
-## Important
+## Quality Over Quantity
 
-- Person IDs look like `p_abc123` — get them from orbit_lookup results
-- The graph updates in real-time — after ingest, lookup will show the new data
-- Relationship scores auto-increment on each interaction (max 10)
-- Going cold = score > 5 AND no interaction in 14+ days
+10 well-reasoned contacts with rich relationship context are worth more than 1,000 bare names. When you're not sure about the relationship, say so in the context rather than leaving it blank.
