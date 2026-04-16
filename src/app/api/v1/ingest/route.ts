@@ -1,8 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
-import { writeNeo4j, queryNeo4j } from "@/lib/neo4j";
+import {
+  batchUpsertPersons,
+  batchResolveParticipants,
+  batchCreateInteractions,
+  batchMergeKnows,
+  type PersonBatchItem,
+  type InteractionBatchItem,
+  type KnowsBatchItem,
+} from "@/lib/neo4j";
 import { getAgentOrSessionAuth } from "@/lib/api-auth";
+import { waitUntil } from "@vercel/functions";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+const CHUNK_SIZE = 20;
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
+  }
+  return chunks;
+}
 
 /**
  * POST /api/v1/ingest
@@ -10,12 +30,13 @@ export const dynamic = "force-dynamic";
  * Bulk ingestion endpoint for agents. Accepts a batch of observed interactions
  * and creates/updates Person nodes + INTERACTED edges + KNOWS edges.
  *
- * This is the primary write path — agents call this after observing conversations.
+ * Returns immediately with accepted counts. Processing runs in background
+ * via waitUntil (Vercel) or awaited directly (local dev).
  *
  * Body:
  * {
  *   interactions: [{
- *     participants: ["Jane Smith", "Bob Chen"],  // names observed in conversation
+ *     participants: ["Jane Smith", "Bob Chen"],
  *     channel: "slack" | "whatsapp" | "telegram" | "email" | "imessage" | "meeting" | ...,
  *     summary?: "Discussed fundraising timeline",
  *     topic?: "fundraising",
@@ -40,101 +61,112 @@ export async function POST(request: NextRequest) {
   const { interactions = [], persons = [] } = body;
 
   const { userId, selfNodeId } = auth;
-  const stats = { personsCreated: 0, personsUpdated: 0, interactionsCreated: 0, edgesCreated: 0 };
 
-  // Upsert person metadata if provided
-  for (const p of persons) {
-    if (!p.name) continue;
+  // Return accepted counts immediately
+  const accepted = {
+    persons: persons.filter((p: { name?: string }) => p.name).length,
+    interactions: interactions.filter(
+      (ix: { participants?: unknown }) =>
+        Array.isArray(ix.participants) && ix.participants.length > 0
+    ).length,
+  };
 
-    const existing = await queryNeo4j(userId,
-      `MATCH (p:Person {userId: $userId}) WHERE toLower(p.name) = toLower($name) RETURN p.id AS id LIMIT 1`,
-      { name: p.name.trim() }
-    );
+  const promise = processIngest(userId, selfNodeId, persons, interactions);
 
-    if (existing.length > 0) {
-      // Update with new info
-      const sets: string[] = [];
-      const params: Record<string, unknown> = { personId: existing[0].id };
-      if (p.company) { sets.push("p.company = $company"); params.company = p.company; }
-      if (p.email) { sets.push("p.email = $email"); params.email = p.email; }
-      if (p.category) { sets.push("p.category = $category"); params.category = p.category; }
-      if (p.title) { sets.push("p.title = $title"); params.title = p.title; }
-
-      if (sets.length > 0) {
-        await writeNeo4j(userId,
-          `MATCH (p:Person {id: $personId, userId: $userId}) SET ${sets.join(", ")}`,
-          params
-        );
-        stats.personsUpdated++;
-      }
-    } else {
-      // Create new person
-      const personId = `p_${crypto.randomUUID().slice(0, 8)}`;
-      await writeNeo4j(userId,
-        `CREATE (p:Person {
-          id: $personId, userId: $userId, name: $name,
-          company: $company, email: $email, category: $category,
-          title: $title, relationship_to_me: $relationshipToMe,
-          relationship_score: 1, source: "agent"
-        })`,
-        {
-          personId,
-          name: p.name.trim(),
-          company: p.company || null,
-          email: p.email || null,
-          category: p.category || "other",
-          title: p.title || null,
-          relationshipToMe: p.relationship_to_me || null,
-        }
-      );
-      stats.personsCreated++;
-    }
+  // waitUntil runs the promise in the background on Vercel.
+  // In local dev (next dev), waitUntil throws — fall back to await.
+  try {
+    waitUntil(promise);
+  } catch {
+    await promise;
   }
 
-  // Process interactions
-  for (const ix of interactions) {
-    if (!ix.participants || !Array.isArray(ix.participants) || ix.participants.length === 0) continue;
+  return NextResponse.json({ ok: true, accepted });
+}
 
-    const resolvedIds: string[] = [];
+async function processIngest(
+  userId: string,
+  selfNodeId: string,
+  persons: Array<{
+    name?: string;
+    company?: string;
+    email?: string;
+    category?: string;
+    title?: string;
+    relationship_to_me?: string;
+  }>,
+  interactions: Array<{
+    participants?: string[];
+    channel?: string;
+    summary?: string;
+    topic?: string;
+    timestamp?: string;
+    relationship_context?: string;
+    sentiment?: string;
+    connection_context?: string;
+  }>
+) {
+  try {
+    // Step 1: Batch upsert person metadata
+    const personItems: PersonBatchItem[] = persons
+      .filter((p) => p.name)
+      .map((p) => ({
+        name: p.name!.trim(),
+        newId: `p_${crypto.randomUUID().slice(0, 8)}`,
+        company: p.company || null,
+        email: p.email || null,
+        category: p.category || null,
+        title: p.title || null,
+        relationship_to_me: p.relationship_to_me || null,
+      }));
 
-    for (const name of ix.participants) {
-      if (!name || typeof name !== "string") continue;
+    for (const batch of chunk(personItems, CHUNK_SIZE)) {
+      await batchUpsertPersons(userId, batch);
+    }
 
-      // Resolve or create person
-      const existing = await queryNeo4j(userId,
-        `MATCH (p:Person {userId: $userId}) WHERE toLower(p.name) = toLower($name) AND p.category <> "self" RETURN p.id AS id LIMIT 1`,
-        { name: name.trim() }
-      );
-
-      let personId: string;
-      if (existing.length > 0) {
-        personId = existing[0].id as string;
-      } else {
-        personId = `p_${crypto.randomUUID().slice(0, 8)}`;
-        await writeNeo4j(userId,
-          `CREATE (p:Person {
-            id: $personId, userId: $userId, name: $name,
-            category: "other", relationship_score: 1, source: "agent"
-          })`,
-          { personId, name: name.trim() }
-        );
-        stats.personsCreated++;
+    // Step 2: Collect all unique participant names across interactions
+    const allParticipantNames = new Set<string>();
+    for (const ix of interactions) {
+      if (!Array.isArray(ix.participants)) continue;
+      for (const name of ix.participants) {
+        if (name && typeof name === "string") {
+          allParticipantNames.add(name.trim());
+        }
       }
+    }
 
-      resolvedIds.push(personId);
+    // Step 3: Batch resolve all participants (create if missing, exclude "self")
+    const resolveItems = Array.from(allParticipantNames).map((name) => ({
+      name,
+      newId: `p_${crypto.randomUUID().slice(0, 8)}`,
+    }));
 
-      // Create INTERACTED edge from self to this person
-      await writeNeo4j(userId,
-        `MATCH (a:Person {id: $selfNodeId, userId: $userId}), (b:Person {id: $personId, userId: $userId})
-         CREATE (a)-[:INTERACTED {
-           channel: $channel,
-           timestamp: $timestamp,
-           summary: $summary,
-           topic_summary: $topic,
-           relationship_context: $relationshipContext,
-           sentiment: $sentiment
-         }]->(b)`,
-        {
+    const nameToId = new Map<string, string>();
+    for (const batch of chunk(resolveItems, CHUNK_SIZE)) {
+      const resolved = await batchResolveParticipants(userId, batch);
+      for (const r of resolved) {
+        nameToId.set(r.name.toLowerCase(), r.id);
+      }
+    }
+
+    // Step 4: Batch create INTERACTED edges + score bumps
+    const interactionItems: InteractionBatchItem[] = [];
+    // Collect KNOWS edges per interaction (multi-participant)
+    const knowsItems: KnowsBatchItem[] = [];
+
+    for (const ix of interactions) {
+      if (!Array.isArray(ix.participants) || ix.participants.length === 0) continue;
+
+      const resolvedIds: string[] = [];
+
+      for (const name of ix.participants) {
+        if (!name || typeof name !== "string") continue;
+        const personId = nameToId.get(name.trim().toLowerCase());
+        if (!personId) continue;
+
+        resolvedIds.push(personId);
+
+        interactionItems.push({
           selfNodeId,
           personId,
           channel: ix.channel || "unknown",
@@ -143,44 +175,35 @@ export async function POST(request: NextRequest) {
           topic: ix.topic || null,
           relationshipContext: ix.relationship_context || null,
           sentiment: ix.sentiment || null,
-        }
-      );
-      stats.interactionsCreated++;
+        });
+      }
 
-      // Update last_interaction_at and bump score
-      await writeNeo4j(userId,
-        `MATCH (p:Person {id: $personId, userId: $userId})
-         SET p.last_interaction_at = datetime().epochMillis,
-             p.relationship_score = CASE
-               WHEN p.relationship_score < 10
-               THEN p.relationship_score + 0.1
-               ELSE p.relationship_score
-             END`,
-        { personId }
-      );
-    }
-
-    // If multiple participants, create KNOWS edges between them with context
-    if (resolvedIds.length >= 2) {
-      for (let i = 0; i < resolvedIds.length; i++) {
-        for (let j = i + 1; j < resolvedIds.length; j++) {
-          await writeNeo4j(userId,
-            `MATCH (a:Person {id: $idA, userId: $userId}), (b:Person {id: $idB, userId: $userId})
-             MERGE (a)-[r:KNOWS]->(b)
-             ON CREATE SET r.source = $channel, r.context = $context, r.created_at = datetime()
-             ON MATCH SET r.context = CASE WHEN $context IS NOT NULL AND r.context IS NOT NULL THEN r.context + " | " + $context WHEN $context IS NOT NULL THEN $context ELSE r.context END`,
-            {
+      // KNOWS edges between participants in the same interaction
+      if (resolvedIds.length >= 2) {
+        for (let i = 0; i < resolvedIds.length; i++) {
+          for (let j = i + 1; j < resolvedIds.length; j++) {
+            knowsItems.push({
               idA: resolvedIds[i],
               idB: resolvedIds[j],
               channel: ix.channel || "co-presence",
               context: ix.connection_context || ix.summary || null,
-            }
-          );
-          stats.edgesCreated++;
+            });
+          }
         }
       }
     }
-  }
 
-  return NextResponse.json({ ok: true, stats });
+    for (const batch of chunk(interactionItems, CHUNK_SIZE)) {
+      await batchCreateInteractions(userId, batch);
+    }
+
+    // Step 5: Batch MERGE KNOWS edges
+    for (const batch of chunk(knowsItems, CHUNK_SIZE)) {
+      await batchMergeKnows(userId, batch);
+    }
+
+    console.log(`[ingest] done for ${userId}: ${personItems.length} persons, ${interactionItems.length} interactions, ${knowsItems.length} knows edges`);
+  } catch (err) {
+    console.error("[ingest] background processing failed:", err);
+  }
 }

@@ -94,3 +94,187 @@ export async function writeNeo4j(
     await session.close();
   }
 }
+
+// --------------- Batch helpers for ingest ---------------
+
+export interface PersonBatchItem {
+  name: string;
+  newId: string;
+  company?: string | null;
+  email?: string | null;
+  category?: string | null;
+  title?: string | null;
+  relationship_to_me?: string | null;
+}
+
+/**
+ * Batch upsert persons via UNWIND. Case-insensitive MERGE by name + userId.
+ * Returns the resolved id and name for each item in the batch.
+ */
+export async function batchUpsertPersons(
+  userId: string,
+  batch: PersonBatchItem[]
+): Promise<{ id: string; name: string }[]> {
+  if (batch.length === 0) return [];
+
+  const session = getDriver().session({
+    database: (process.env.NEO4J_DATABASE || "neo4j").trim(),
+    defaultAccessMode: neo4j.session.WRITE,
+  });
+  try {
+    const result = await session.run(
+      `UNWIND $batch AS p
+       OPTIONAL MATCH (existing:Person {userId: $userId})
+         WHERE toLower(existing.name) = toLower(p.name)
+       SET existing.company = CASE WHEN p.company IS NOT NULL THEN p.company ELSE existing.company END,
+           existing.email = CASE WHEN p.email IS NOT NULL THEN p.email ELSE existing.email END,
+           existing.category = CASE WHEN p.category IS NOT NULL THEN p.category ELSE existing.category END,
+           existing.title = CASE WHEN p.title IS NOT NULL THEN p.title ELSE existing.title END,
+           existing.relationship_to_me = CASE WHEN p.relationship_to_me IS NOT NULL THEN p.relationship_to_me ELSE existing.relationship_to_me END
+       FOREACH (_ IN CASE WHEN existing IS NULL THEN [1] ELSE [] END |
+         CREATE (:Person {
+           id: p.newId, userId: $userId, name: p.name,
+           company: p.company, email: p.email,
+           category: COALESCE(p.category, "other"),
+           title: p.title,
+           relationship_to_me: p.relationship_to_me,
+           relationship_score: 1, source: "agent"
+         })
+       )
+       RETURN COALESCE(existing.id, p.newId) AS id, p.name AS name`,
+      { userId, batch }
+    );
+    return result.records.map((r) => ({
+      id: r.get("id") as string,
+      name: r.get("name") as string,
+    }));
+  } finally {
+    await session.close();
+  }
+}
+
+export interface InteractionBatchItem {
+  selfNodeId: string;
+  personId: string;
+  channel: string;
+  timestamp: string;
+  summary: string | null;
+  topic: string | null;
+  relationshipContext: string | null;
+  sentiment: string | null;
+}
+
+/**
+ * Batch create INTERACTED edges + bump relationship scores via UNWIND.
+ */
+export async function batchCreateInteractions(
+  userId: string,
+  batch: InteractionBatchItem[]
+): Promise<void> {
+  if (batch.length === 0) return;
+
+  const session = getDriver().session({
+    database: (process.env.NEO4J_DATABASE || "neo4j").trim(),
+    defaultAccessMode: neo4j.session.WRITE,
+  });
+  try {
+    await session.run(
+      `UNWIND $batch AS ix
+       MATCH (a:Person {id: ix.selfNodeId, userId: $userId}),
+             (b:Person {id: ix.personId, userId: $userId})
+       CREATE (a)-[:INTERACTED {
+         channel: ix.channel,
+         timestamp: ix.timestamp,
+         summary: ix.summary,
+         topic_summary: ix.topic,
+         relationship_context: ix.relationshipContext,
+         sentiment: ix.sentiment
+       }]->(b)
+       SET b.last_interaction_at = datetime().epochMillis,
+           b.relationship_score = CASE
+             WHEN b.relationship_score < 10
+             THEN b.relationship_score + 0.1
+             ELSE b.relationship_score
+           END`,
+      { userId, batch }
+    );
+  } finally {
+    await session.close();
+  }
+}
+
+export interface KnowsBatchItem {
+  idA: string;
+  idB: string;
+  channel: string;
+  context: string | null;
+}
+
+/**
+ * Batch MERGE KNOWS edges between participants via UNWIND.
+ */
+export async function batchMergeKnows(
+  userId: string,
+  batch: KnowsBatchItem[]
+): Promise<void> {
+  if (batch.length === 0) return;
+
+  const session = getDriver().session({
+    database: (process.env.NEO4J_DATABASE || "neo4j").trim(),
+    defaultAccessMode: neo4j.session.WRITE,
+  });
+  try {
+    await session.run(
+      `UNWIND $batch AS k
+       MATCH (a:Person {id: k.idA, userId: $userId}),
+             (b:Person {id: k.idB, userId: $userId})
+       MERGE (a)-[r:KNOWS]->(b)
+       ON CREATE SET r.source = k.channel, r.context = k.context, r.created_at = datetime()
+       ON MATCH SET r.context = CASE
+         WHEN k.context IS NOT NULL AND r.context IS NOT NULL THEN r.context + " | " + k.context
+         WHEN k.context IS NOT NULL THEN k.context
+         ELSE r.context
+       END`,
+      { userId, batch }
+    );
+  } finally {
+    await session.close();
+  }
+}
+
+/**
+ * Resolve interaction participants by name. Case-insensitive match, excludes "self" category.
+ * Creates new Person nodes for unknown names. Returns resolved id per name.
+ */
+export async function batchResolveParticipants(
+  userId: string,
+  batch: { name: string; newId: string }[]
+): Promise<{ id: string; name: string }[]> {
+  if (batch.length === 0) return [];
+
+  const session = getDriver().session({
+    database: (process.env.NEO4J_DATABASE || "neo4j").trim(),
+    defaultAccessMode: neo4j.session.WRITE,
+  });
+  try {
+    const result = await session.run(
+      `UNWIND $batch AS p
+       OPTIONAL MATCH (existing:Person {userId: $userId})
+         WHERE toLower(existing.name) = toLower(p.name) AND existing.category <> "self"
+       FOREACH (_ IN CASE WHEN existing IS NULL THEN [1] ELSE [] END |
+         CREATE (:Person {
+           id: p.newId, userId: $userId, name: p.name,
+           category: "other", relationship_score: 1, source: "agent"
+         })
+       )
+       RETURN COALESCE(existing.id, p.newId) AS id, p.name AS name`,
+      { userId, batch }
+    );
+    return result.records.map((r) => ({
+      id: r.get("id") as string,
+      name: r.get("name") as string,
+    }));
+  } finally {
+    await session.close();
+  }
+}
