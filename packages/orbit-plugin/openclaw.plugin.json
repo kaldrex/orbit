@@ -1,0 +1,19 @@
+{
+  "id": "orbit-connector",
+  "name": "Orbit Connector Framework",
+  "description": "Automatic relationship graph builder — captures interactions from WhatsApp, Calendar, Gmail, Slack, Linear and pushes them to Orbit.",
+  "version": "0.1.0",
+  "config": {
+    "ORBIT_API_KEY": {
+      "type": "string",
+      "required": true,
+      "description": "Orbit API key for ingesting signals. Get one from your Orbit dashboard."
+    },
+    "ORBIT_API_URL": {
+      "type": "string",
+      "required": false,
+      "default": "https://orbit-mu-roan.vercel.app/api/v1",
+      "description": "Orbit API base URL. Override for self-hosted instances."
+    }
+  }
+}

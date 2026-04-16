@@ -1,0 +1,13 @@
+{
+  "name": "@orbit/plugin",
+  "version": "0.1.0",
+  "description": "Orbit connector framework — identity resolution + signal buffering for OpenClaw agents",
+  "type": "module",
+  "main": "lib/index.js",
+  "files": ["lib/", "openclaw.plugin.json"],
+  "keywords": ["openclaw", "plugin", "orbit", "connector", "identity", "signal"],
+  "license": "MIT",
+  "optionalDependencies": {
+    "better-sqlite3": "^11.0.0"
+  }
+}
