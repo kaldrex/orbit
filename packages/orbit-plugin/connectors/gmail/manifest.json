@@ -1,0 +1,7 @@
+{
+  "name": "gmail",
+  "displayName": "Gmail",
+  "mode": "batch",
+  "pollIntervalHours": 2,
+  "cliCommand": "gws gmail"
+}
