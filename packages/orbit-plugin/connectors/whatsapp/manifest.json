@@ -1,0 +1,6 @@
+{
+  "name": "whatsapp",
+  "displayName": "WhatsApp",
+  "mode": "realtime",
+  "webhookEvent": "message"
+}
