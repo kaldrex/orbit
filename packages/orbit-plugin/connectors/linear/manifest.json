@@ -1,0 +1,6 @@
+{
+  "name": "linear",
+  "displayName": "Linear",
+  "mode": "batch",
+  "pollIntervalHours": 4
+}
