@@ -1,0 +1,4 @@
+{"type":"server-started","port":65458,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:65458","screen_dir":"/Users/sanchay/Documents/projects/personal/orbit/.claude/worktrees/naughty-snyder/.superpowers/brainstorm/425-1776324373/content","state_dir":"/Users/sanchay/Documents/projects/personal/orbit/.claude/worktrees/naughty-snyder/.superpowers/brainstorm/425-1776324373/state"}
+{"type":"screen-added","file":"/Users/sanchay/Documents/projects/personal/orbit/.claude/worktrees/naughty-snyder/.superpowers/brainstorm/425-1776324373/content/direction-compare.html"}
+{"type":"screen-added","file":"/Users/sanchay/Documents/projects/personal/orbit/.claude/worktrees/naughty-snyder/.superpowers/brainstorm/425-1776324373/content/direction-premium.html"}
+{"type":"server-stopped","reason":"idle timeout"}
