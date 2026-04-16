@@ -4,8 +4,8 @@
     {
       "name": "orbit-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--", "--port", "3456"],
-      "port": 3456
+      "runtimeArgs": ["run", "dev"],
+      "autoPort": true
     }
   ]
 }
