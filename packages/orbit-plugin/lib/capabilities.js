@@ -57,10 +57,19 @@ export function introspectCapabilities() {
   const config = readConfig();
   const channels = config?.channels ?? {};
 
-  // Channel connectivity = has token/auth + not explicitly disabled
-  const whatsappOn =
+  // Data source paths (checked twice — once for channel "on" signal and once
+  // for data-source reporting below).
+  const whatsappHistoryDir = join(homedir(), "gowa", "storages");
+  const whatsappHistoryOn = existsSync(whatsappHistoryDir);
+  const wacliDb = join(homedir(), ".wacli", "wacli.db");
+  const wacliOn = existsSync(wacliDb);
+
+  // Channel connectivity = explicit channel config OR historical data on disk
+  const whatsappChannelConfigured =
     channels.whatsapp?.dmPolicy !== "disabled" &&
-    (channels.whatsapp?.allowFrom?.length > 0 || channels.whatsapp?.dmPolicy === "open");
+    (channels.whatsapp?.allowFrom?.length > 0 ||
+      channels.whatsapp?.dmPolicy === "open");
+  const whatsappOn = whatsappChannelConfigured || whatsappHistoryOn || wacliOn;
   const telegramOn =
     channels.telegram?.enabled !== false &&
     Boolean(channels.telegram?.botToken);
@@ -74,9 +83,8 @@ export function introspectCapabilities() {
   // Data sources on disk / CLI
   const gwsCli = cliExists("gws");
   const wacliCli = cliExists("wacli");
-  const whatsappHistoryDir = join(homedir(), "gowa", "storages");
-  const whatsappHistoryOn = existsSync(whatsappHistoryDir);
-  const linearApiKey = Boolean(process.env.LINEAR_API_KEY);
+  const linearApiKey =
+    Boolean(process.env.LINEAR_API_KEY) || Boolean(process.env.LINEAR_API_TOKEN);
 
   return {
     agentId: config?.agents?.list?.[0]?.id || "main",
