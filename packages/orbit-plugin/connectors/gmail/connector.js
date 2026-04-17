@@ -121,7 +121,7 @@ export default class GmailConnector extends BaseConnector {
         .filter((r) => r.email);
 
       // Filter newsletters
-      if (isNewsletter(from.email, labels)) {
+      if (isNewsletter(from.email, labels, from.name)) {
         this.stats.filtered++;
         continue;
       }
