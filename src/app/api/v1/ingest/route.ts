@@ -12,6 +12,31 @@ import { getAgentOrSessionAuth } from "@/lib/api-auth";
 import { waitUntil } from "@vercel/functions";
 import { normalizeCategory } from "@/lib/categories";
 import { filterIngestPayload } from "@/lib/ingest-filters";
+import { buildSelfIdentity } from "@/lib/self-identity";
+
+// A participant can be either the legacy "just a name" string or the
+// structured shape with email/phone. Connectors that know an identifier
+// should always use the structured shape so matching can skip fuzzy name
+// work and land deterministically on the canonical Person.
+type ParticipantInput = string | { name: string; email?: string; phone?: string };
+
+function participantName(p: ParticipantInput): string | null {
+  if (typeof p === "string") return p.trim() || null;
+  if (p && typeof p === "object" && typeof p.name === "string") {
+    return p.name.trim() || null;
+  }
+  return null;
+}
+
+function participantEmail(p: ParticipantInput): string | null {
+  if (typeof p === "string") return null;
+  return (p && typeof p.email === "string" && p.email.trim()) || null;
+}
+
+function participantPhone(p: ParticipantInput): string | null {
+  if (typeof p === "string") return null;
+  return (p && typeof p.phone === "string" && p.phone.trim()) || null;
+}
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -88,7 +113,10 @@ export async function POST(request: NextRequest) {
     interactions: validInteractions.length,
   };
 
-  const promise = processIngest(userId, selfNodeId, persons, interactions);
+  const promise = processIngest(userId, selfNodeId, persons, interactions, {
+    authEmail: auth.authEmail,
+    displayName: auth.displayName,
+  });
 
   // waitUntil runs the promise in the background on Vercel.
   // In local dev (next dev), waitUntil throws — fall back to await.
@@ -120,12 +148,13 @@ async function processIngest(
     name?: string;
     company?: string;
     email?: string;
+    phone?: string;
     category?: string;
     title?: string;
     relationship_to_me?: string;
   }>,
   interactions: Array<{
-    participants?: string[];
+    participants?: ParticipantInput[];
     channel?: string;
     summary?: string;
     topic?: string;
@@ -133,7 +162,8 @@ async function processIngest(
     relationship_context?: string;
     sentiment?: string;
     connection_context?: string;
-  }>
+  }>,
+  authExtras: { authEmail?: string; displayName?: string }
 ) {
   try {
     // Step 0: Filter junk (bots, newsletters, phone-number names) + normalize categories
@@ -141,6 +171,10 @@ async function processIngest(
     if (filtered.bots + filtered.junkParticipants + filtered.newsletters > 0) {
       console.log(`[ingest] filtered: ${JSON.stringify(filtered)}`);
     }
+
+    // Step 0.5: build the self-identity signature so batchResolveParticipants
+    // can route any self-reference onto the canonical self node.
+    const selfIdentity = await buildSelfIdentity(userId, selfNodeId, authExtras);
 
     // Step 1: Batch upsert person metadata
     // Deduplicate persons by lowercased name (last-writer-wins on metadata)
@@ -154,6 +188,7 @@ async function processIngest(
         newId: `p_${crypto.randomUUID().slice(0, 8)}`,
         company: p.company || null,
         email: p.email || null,
+        phone: p.phone || null,
         category: normalizeCategory(p.category),
         title: p.title || null,
         relationship_to_me: p.relationship_to_me || null,
@@ -163,28 +198,70 @@ async function processIngest(
       await batchUpsertPersons(userId, batch);
     }
 
-    // Step 2: Collect all unique participant names across interactions
-    const allParticipantNames = new Set<string>();
+    // Step 2: Collect unique participants keyed by strongest identifier,
+    // so that multiple signals for the same person (even with slightly
+    // different name spellings) collapse to a single resolve item.
+    // Identity-key priority: email > phone > lowercased name.
+    type Participant = { name: string; email: string | null; phone: string | null };
+    const byIdent = new Map<string, Participant>();
+    // Parallel map from each raw lowercased name → ident key, so Step 4
+    // can look up the resolved id regardless of how the participant was
+    // first collapsed.
+    const nameToIdent = new Map<string, string>();
+
+    const normPhone = (s: string | null): string | null => {
+      if (!s) return null;
+      const d = s.replace(/\D/g, "");
+      return d.length >= 7 ? d : null;
+    };
+
+    const identKey = (p: Participant): string => {
+      if (p.email) return `e:${p.email.toLowerCase()}`;
+      if (p.phone) return `p:${p.phone}`;
+      return `n:${p.name.toLowerCase()}`;
+    };
+
     for (const ix of cleanInteractions) {
       if (!Array.isArray(ix.participants)) continue;
-      for (const name of ix.participants) {
-        if (name && typeof name === "string") {
-          allParticipantNames.add(name.trim());
+      for (const raw of ix.participants) {
+        const name = participantName(raw);
+        if (!name) continue;
+        const email = participantEmail(raw)?.toLowerCase() || null;
+        const phone = normPhone(participantPhone(raw));
+
+        const candidate: Participant = { name, email, phone };
+        const key = identKey(candidate);
+
+        const existing = byIdent.get(key);
+        if (!existing) {
+          byIdent.set(key, candidate);
+        } else {
+          // Longer name is usually more informative. Union identifiers.
+          if (name.length > existing.name.length) existing.name = name;
+          if (!existing.email && email) existing.email = email;
+          if (!existing.phone && phone) existing.phone = phone;
         }
+        // Track every lowercased name we saw → key, so Step 4 can lookup.
+        nameToIdent.set(name.toLowerCase(), key);
       }
     }
 
-    // Step 3: Batch resolve all participants (create if missing, exclude "self")
-    const resolveItems = Array.from(allParticipantNames).map((name) => ({
-      name,
+    // Step 3: Batch resolve all participants (create if missing, route self)
+    const resolveItems = Array.from(byIdent.entries()).map(([key, p]) => ({
+      key,
+      name: p.name,
+      email: p.email,
+      phone: p.phone,
       newId: `p_${crypto.randomUUID().slice(0, 8)}`,
     }));
 
-    const nameToId = new Map<string, string>();
+    const keyToId = new Map<string, string>();
     for (const batch of chunk(resolveItems, CHUNK_SIZE)) {
-      const resolved = await batchResolveParticipants(userId, batch);
-      for (const r of resolved) {
-        nameToId.set(r.name.toLowerCase(), r.id);
+      // batchResolveParticipants returns {id, name} keyed by input name order;
+      // we match back via the order of items in the batch.
+      const resolved = await batchResolveParticipants(userId, selfIdentity, batch);
+      for (let i = 0; i < batch.length; i++) {
+        keyToId.set(batch[i].key, resolved[i].id);
       }
     }
 
@@ -198,9 +275,20 @@ async function processIngest(
 
       const resolvedIds: string[] = [];
 
-      for (const name of ix.participants) {
-        if (!name || typeof name !== "string") continue;
-        const personId = nameToId.get(name.trim().toLowerCase());
+      for (const raw of ix.participants) {
+        const name = participantName(raw);
+        if (!name) continue;
+        const email = participantEmail(raw)?.toLowerCase() || null;
+        const phone = normPhone(participantPhone(raw));
+        const candidate: Participant = { name, email, phone };
+        let personId = keyToId.get(identKey(candidate));
+        // Fallback: if this exact ident key wasn't collapsed (e.g. email
+        // showed up on one signal but not another), look up via any name
+        // we saw during collection.
+        if (!personId) {
+          const k = nameToIdent.get(name.toLowerCase());
+          if (k) personId = keyToId.get(k);
+        }
         if (!personId) continue;
 
         resolvedIds.push(personId);

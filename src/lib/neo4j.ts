@@ -1,4 +1,10 @@
 import neo4j, { Driver } from "neo4j-driver";
+import {
+  RESOLVE_PARTICIPANTS_CYPHER,
+  normalizeEmail,
+  normalizePhone,
+} from "@/lib/cypher/resolve-participants";
+import type { SelfIdentity } from "@/lib/self-identity";
 
 let driver: Driver | null = null;
 
@@ -102,6 +108,7 @@ export interface PersonBatchItem {
   newId: string;
   company?: string | null;
   email?: string | null;
+  phone?: string | null;
   category?: string | null;
   title?: string | null;
   relationship_to_me?: string | null;
@@ -128,13 +135,14 @@ export async function batchUpsertPersons(
          WHERE toLower(existing.name) = toLower(p.name)
        SET existing.company = CASE WHEN p.company IS NOT NULL THEN p.company ELSE existing.company END,
            existing.email = CASE WHEN p.email IS NOT NULL THEN p.email ELSE existing.email END,
+           existing.phone = CASE WHEN p.phone IS NOT NULL THEN p.phone ELSE existing.phone END,
            existing.category = CASE WHEN p.category IS NOT NULL THEN p.category ELSE existing.category END,
            existing.title = CASE WHEN p.title IS NOT NULL THEN p.title ELSE existing.title END,
            existing.relationship_to_me = CASE WHEN p.relationship_to_me IS NOT NULL THEN p.relationship_to_me ELSE existing.relationship_to_me END
        FOREACH (_ IN CASE WHEN existing IS NULL THEN [1] ELSE [] END |
          CREATE (:Person {
            id: p.newId, userId: $userId, name: p.name,
-           company: p.company, email: p.email,
+           company: p.company, email: p.email, phone: p.phone,
            category: COALESCE(p.category, "other"),
            title: p.title,
            relationship_to_me: p.relationship_to_me,
@@ -242,34 +250,57 @@ export async function batchMergeKnows(
   }
 }
 
+export interface ResolveParticipantItem {
+  name: string;
+  newId: string;
+  email?: string | null;
+  phone?: string | null;
+}
+
 /**
- * Resolve interaction participants by name. Case-insensitive match, excludes "self" category.
- * Creates new Person nodes for unknown names. Returns resolved id per name.
+ * Resolve interaction participants with a 4-tier match cascade:
+ *
+ *   1. email match  — if input carries email, pick Person with same email
+ *   2. phone match  — if input carries phone (digits-only), match
+ *   3. self match   — if input's email/phone/name hits a known self-alias,
+ *                     route to the user's canonical self node
+ *   4. name match   — case-insensitive, excluding category="self"
+ *   5. create new   — with email/phone attached so next tick matches
+ *
+ * Also opportunistically fills email/phone on matched Persons that lacked them,
+ * so future matching tightens over time without a separate backfill.
+ *
+ * The Cypher is shared with scripts/replay-bleed.js via
+ * src/lib/cypher/resolve-participants.js so the bleed-rate replay always
+ * exercises the exact same query the server runs.
  */
 export async function batchResolveParticipants(
   userId: string,
-  batch: { name: string; newId: string }[]
+  selfIdentity: SelfIdentity,
+  batch: ResolveParticipantItem[]
 ): Promise<{ id: string; name: string }[]> {
   if (batch.length === 0) return [];
+
+  // Normalize the batch so the Cypher doesn't have to care about shape.
+  const normalized = batch.map((b) => ({
+    name: b.name,
+    newId: b.newId,
+    email: normalizeEmail(b.email ?? null),
+    phone: normalizePhone(b.phone ?? null),
+  }));
 
   const session = getDriver().session({
     database: (process.env.NEO4J_DATABASE || "neo4j").trim(),
     defaultAccessMode: neo4j.session.WRITE,
   });
   try {
-    const result = await session.run(
-      `UNWIND $batch AS p
-       OPTIONAL MATCH (existing:Person {userId: $userId})
-         WHERE toLower(existing.name) = toLower(p.name) AND existing.category <> "self"
-       FOREACH (_ IN CASE WHEN existing IS NULL THEN [1] ELSE [] END |
-         CREATE (:Person {
-           id: p.newId, userId: $userId, name: p.name,
-           category: "other", relationship_score: 1, source: "agent"
-         })
-       )
-       RETURN COALESCE(existing.id, p.newId) AS id, p.name AS name`,
-      { userId, batch }
-    );
+    const result = await session.run(RESOLVE_PARTICIPANTS_CYPHER, {
+      userId,
+      batch: normalized,
+      selfEmails: selfIdentity.emails,
+      selfPhones: selfIdentity.phones,
+      selfNames: selfIdentity.names,
+    });
     return result.records.map((r) => ({
       id: r.get("id") as string,
       name: r.get("name") as string,

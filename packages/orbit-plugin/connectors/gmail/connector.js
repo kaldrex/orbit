@@ -158,7 +158,8 @@ export default class GmailConnector extends BaseConnector {
         headers.date ? new Date(headers.date).toISOString() : new Date().toISOString();
       const subject = headers.subject || undefined;
 
-      // Emit one signal per contact
+      // Emit one signal per contact — thread the email through so the server
+      // can resolve to the canonical Person by identifier, not by name.
       for (const contact of contacts) {
         const contactName =
           contact.name ||
@@ -167,6 +168,7 @@ export default class GmailConnector extends BaseConnector {
 
         signals.push({
           contactName,
+          contactEmail: contact.email || undefined,
           channel: "email",
           timestamp,
           detail: subject,

@@ -9,6 +9,7 @@ export async function getAuthContext(): Promise<{
   userId: string;
   selfNodeId: string | null;
   displayName: string;
+  authEmail: string | null;
 } | null> {
   const cookieStore = await cookies();
   const supabase = createServerClient(
@@ -46,5 +47,6 @@ export async function getAuthContext(): Promise<{
       user.user_metadata?.display_name ??
       user.email?.split("@")[0] ??
       "User",
+    authEmail: user.email ?? null,
   };
 }
