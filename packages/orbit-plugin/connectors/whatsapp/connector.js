@@ -65,8 +65,12 @@ export default class WhatsAppConnector extends BaseConnector {
         const isGroup = isGroupJid(chatJid);
         const messages = conv.messages || [];
 
-        for (const msg of messages) {
-          const senderJid = msg.participant || msg.key?.participant || chatJid;
+        for (const wrapper of messages) {
+          // GOWA format wraps every message in a `message` envelope:
+          // { message: { key, message: { conversation }, messageTimestamp } }
+          const msg = wrapper.message || wrapper;
+          const senderJid =
+            msg.participant || msg.key?.participant || chatJid;
           const fromMe = msg.key?.fromMe;
           const text =
             msg.message?.conversation ||
