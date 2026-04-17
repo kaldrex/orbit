@@ -1,0 +1,169 @@
+{
+  "description": "Synthetic signals designed to trigger known rule-failure modes in batchResolveParticipants. Used by the --replay verification path (M8). Each signal mirrors what a connector would post to /api/v1/ingest. The expected_resolution lists the canonical person id these signals should converge to. Post-Phase-1, a replay against the new matching logic must produce zero new Person nodes for signals that match existing canonicals.",
+  "expected_canonicals": {
+    "ramon": "p_0e0113c6",
+    "eric_anysphere": "p_5383d6d6",
+    "ashish": "p_baeda7d6",
+    "ashutosh": "p_aec65e7a",
+    "self": "user_728032c5"
+  },
+  "signals": [
+    {
+      "case": "Ramon — abbreviated form should match canonical",
+      "interaction": {
+        "participants": [{ "name": "Ramon B", "email": "ramongberrios@gmail.com" }],
+        "channel": "email",
+        "summary": "Catch up re: fundraise",
+        "timestamp": "2026-04-16T09:00:00Z"
+      },
+      "expected_id": "p_0e0113c6"
+    },
+    {
+      "case": "Ramon — full form should match canonical",
+      "interaction": {
+        "participants": [{ "name": "Ramon Berrios", "email": "ramongberrios@gmail.com" }],
+        "channel": "email",
+        "summary": "Intro thread",
+        "timestamp": "2026-04-16T09:05:00Z"
+      },
+      "expected_id": "p_0e0113c6"
+    },
+    {
+      "case": "Ramon — G middle initial variant",
+      "interaction": {
+        "participants": [{ "name": "Ramon G Berrios", "email": "ramongberrios@gmail.com" }],
+        "channel": "email",
+        "timestamp": "2026-04-16T09:10:00Z"
+      },
+      "expected_id": "p_0e0113c6"
+    },
+    {
+      "case": "Eric — email match, different display name",
+      "interaction": {
+        "participants": [{ "name": "Eric Guo", "email": "eric@anysphere.co" }],
+        "channel": "email",
+        "summary": "Cursor launch ping",
+        "timestamp": "2026-04-16T09:15:00Z"
+      },
+      "expected_id": "p_5383d6d6"
+    },
+    {
+      "case": "Eric — bare first name with matching email",
+      "interaction": {
+        "participants": [{ "name": "Eric", "email": "eric@anysphere.co" }],
+        "channel": "whatsapp",
+        "timestamp": "2026-04-16T09:20:00Z"
+      },
+      "expected_id": "p_5383d6d6"
+    },
+    {
+      "case": "Eric Bernstein — SAME email mistakenly attributed (must NOT merge post-resolver)",
+      "interaction": {
+        "participants": [{ "name": "Eric Bernstein", "email": "eric@anysphere.co" }],
+        "channel": "email",
+        "timestamp": "2026-04-16T09:25:00Z"
+      },
+      "expected_id": "p_5383d6d6",
+      "note": "Phase 1 matches by email so this WILL land on eric@anysphere.co canonical. Phase 3 LLM resolver should later flag as wrong-attribution and keep Eric Bernstein distinct."
+    },
+    {
+      "case": "Ashish — alias AS matches email",
+      "interaction": {
+        "participants": [{ "name": "AS", "email": "as@millionlights.uk" }],
+        "channel": "whatsapp",
+        "timestamp": "2026-04-16T09:30:00Z"
+      },
+      "expected_id": "p_baeda7d6"
+    },
+    {
+      "case": "Ashish — AS Millionlights variant",
+      "interaction": {
+        "participants": [{ "name": "AS Millionlights", "email": "as@millionlights.uk" }],
+        "channel": "email",
+        "timestamp": "2026-04-16T09:35:00Z"
+      },
+      "expected_id": "p_baeda7d6"
+    },
+    {
+      "case": "Ashutosh — shared email with wrong-attribution Shahid (Phase 1 will merge on email; Phase 3 must split)",
+      "interaction": {
+        "participants": [{ "name": "Ashutosh Shrivastava", "email": "shahidshrivastava.01@gmail.com" }],
+        "channel": "email",
+        "timestamp": "2026-04-16T09:40:00Z"
+      },
+      "expected_id": "p_aec65e7a",
+      "note": "Email-based match; Phase 3 will later re-split the wrongly merged Shahid."
+    },
+    {
+      "case": "Self by name — 'Sanchay' must route to self node",
+      "interaction": {
+        "participants": [{ "name": "Sanchay" }],
+        "channel": "whatsapp",
+        "timestamp": "2026-04-16T09:45:00Z"
+      },
+      "expected_id": "user_728032c5"
+    },
+    {
+      "case": "Self by full name — 'Sanchay Thalnerkar' must route to self node",
+      "interaction": {
+        "participants": [{ "name": "Sanchay Thalnerkar", "email": "sanchaythalnerkar@gmail.com" }],
+        "channel": "email",
+        "timestamp": "2026-04-16T09:50:00Z"
+      },
+      "expected_id": "user_728032c5"
+    },
+    {
+      "case": "Self by work email",
+      "interaction": {
+        "participants": [{ "name": "Sanchay T", "email": "sanchay.thalnerkar@localhosthq.com" }],
+        "channel": "email",
+        "timestamp": "2026-04-16T09:55:00Z"
+      },
+      "expected_id": "user_728032c5"
+    },
+    {
+      "case": "New unknown person — should create exactly one new node, not two",
+      "interaction": {
+        "participants": [{ "name": "Jane Q New", "email": "jane@newcompany.example" }],
+        "channel": "email",
+        "timestamp": "2026-04-16T10:00:00Z"
+      },
+      "expected_id": "__NEW__",
+      "dedup_test": [
+        {
+          "participants": [{ "name": "Jane Q New", "email": "jane@newcompany.example" }],
+          "channel": "email",
+          "timestamp": "2026-04-16T10:01:00Z"
+        },
+        {
+          "participants": [{ "name": "Jane New", "email": "jane@newcompany.example" }],
+          "channel": "whatsapp",
+          "timestamp": "2026-04-16T10:02:00Z"
+        }
+      ],
+      "note": "Three signals with same email but different name forms must converge to ONE new node."
+    },
+    {
+      "case": "Group WhatsApp with multiple participants — must not over-count self",
+      "interaction": {
+        "participants": [
+          { "name": "Ramon Berrios", "email": "ramongberrios@gmail.com" },
+          { "name": "Sanchay" }
+        ],
+        "channel": "whatsapp_group",
+        "timestamp": "2026-04-16T10:10:00Z"
+      },
+      "expected_ids": ["p_0e0113c6", "user_728032c5"]
+    },
+    {
+      "case": "Phone-only WhatsApp sender — should match existing phone if present",
+      "interaction": {
+        "participants": [{ "name": "Ramon Berrios", "phone": "+15555551212" }],
+        "channel": "whatsapp",
+        "timestamp": "2026-04-16T10:20:00Z"
+      },
+      "expected_id": "p_0e0113c6",
+      "note": "Depends on whether the canonical Ramon has a phone set; if not, name match fallback applies."
+    }
+  ]
+}
