@@ -14,6 +14,7 @@ import { IdentityCache } from "./lib/identity-cache.js";
 import { SignalBuffer } from "./lib/signal-buffer.js";
 import { ConnectorRegistry } from "./lib/connector-registry.js";
 import { OrbitClient, asToolText, toolError } from "./lib/orbit-client.js";
+import { IdentityResolver } from "./lib/identity-resolver.js";
 import { introspectCapabilities } from "./lib/capabilities.js";
 import { PreMeetingBrief } from "./lib/pre-meeting-brief.js";
 import { GoingColdDigest } from "./lib/going-cold-digest.js";
@@ -442,8 +443,69 @@ export default definePluginEntry({
       },
     });
 
+    // ─── IDENTITY RESOLUTION ─────────────────────────────────
+
+    api.registerTool({
+      name: "orbit_resolve_identities",
+      description:
+        "Identify and merge duplicate Person nodes in the graph. Stage A " +
+        "uses deterministic rules (shared email/phone, abbreviation bridges) " +
+        "and is safe to auto-apply. Stage B sends ambiguous clusters to an " +
+        "LLM for a judgment call and is preview-only by default. Every " +
+        "merge is audit-logged (Supabase merge_audit). Idempotent — running " +
+        "a second time after convergence is a no-op.",
+      parameters: {
+        type: "object",
+        properties: {
+          stage: {
+            type: "string",
+            enum: ["A", "both"],
+            description:
+              "A = rules only (deterministic, safe to auto-apply). " +
+              "both = A + LLM pass (defaults to preview for LLM).",
+          },
+          dry_run: {
+            type: "boolean",
+            description:
+              "Preview mode — compute clusters without POSTing any merges. Default true.",
+          },
+          stage_b_preview: {
+            type: "boolean",
+            description:
+              "When stage=both and dry_run=false, keep Stage B LLM proposals as preview " +
+              "(don't auto-apply). Default true — user should review the first batch.",
+          },
+          max_clusters: {
+            type: "number",
+            description: "Cap per stage. Default 100.",
+          },
+        },
+      },
+      async execute(_id, params) {
+        try {
+          const resolver = new IdentityResolver({ client, logger });
+          const stage = params.stage || "A";
+          const dryRun = params.dry_run !== false; // default true
+          const maxClusters = params.max_clusters || 100;
+
+          if (stage === "A") {
+            const res = await resolver.runStageA({ dryRun, maxMerges: maxClusters });
+            return asToolText(res);
+          }
+          const res = await resolver.resolve({
+            dryRun,
+            stageBPreview: params.stage_b_preview !== false,
+            maxClusters,
+          });
+          return asToolText(res);
+        } catch (e) {
+          return toolError(e.message);
+        }
+      },
+    });
+
     logger.info(
-      `[orbit] registered (tools=8, read=5, write=2, status=1). API: ${client.baseUrl}`
+      `[orbit] registered (tools=9, read=5, write=3, status=1). API: ${client.baseUrl}`
     );
   },
 });
@@ -457,4 +519,5 @@ export const tools = {
   orbit_status: 1,
   orbit_ingest: 1,
   orbit_log_interaction: 1,
+  orbit_resolve_identities: 1,
 };

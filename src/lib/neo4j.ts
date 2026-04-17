@@ -8,7 +8,7 @@ import type { SelfIdentity } from "@/lib/self-identity";
 
 let driver: Driver | null = null;
 
-function getDriver(): Driver {
+export function getDriver(): Driver {
   if (!driver) {
     const uri = (process.env.NEO4J_URI || "").trim();
     const user = (process.env.NEO4J_USER || "").trim();
