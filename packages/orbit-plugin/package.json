@@ -12,6 +12,9 @@
     "connectors/",
     "README.md"
   ],
+  "openclaw": {
+    "extensions": ["./index.js"]
+  },
   "keywords": ["openclaw", "plugin", "orbit", "relationship-intelligence", "crm", "connector"],
   "license": "MIT",
   "optionalDependencies": {
