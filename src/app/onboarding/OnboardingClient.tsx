@@ -50,7 +50,7 @@ export function OnboardingClient({ userEmail }: { userEmail: string }) {
     : "";
 
   async function fetchCapabilities() {
-    const res = await fetch("/api/capabilities");
+    const res = await fetch("/api/v1/capabilities");
     if (!res.ok) return;
     const data = await res.json();
     setAgents(data.agents ?? []);
