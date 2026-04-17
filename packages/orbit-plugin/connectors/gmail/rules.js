@@ -56,6 +56,24 @@ const BUSINESS_NAME_KEYWORDS = [
   " mailer", " newsletter", " updates",
 ];
 
+const AUTOMATED_CONTENT_PATTERNS = [
+  /pushed \d+ commits?/i,
+  /opened (?:an?|the)?\s*(?:issue|pull request)/i,
+  /merged (?:an?|the)?\s*pull request/i,
+  /review(?:ed)? .*pull request/i,
+  /commented on .*pull request/i,
+  /view it on github/i,
+  /you are receiving this because/i,
+  /notification settings/i,
+  /unsubscribe from this/i,
+  /verification code/i,
+  /one[- ]time password/i,
+  /reset your password/i,
+  /\border\b.*\b(?:shipped|delivered|out for delivery|dispatched)\b/i,
+  /\binvoice\b/i,
+  /\breceipt\b/i,
+];
+
 /**
  * Check if an email is a newsletter or automated message.
  * Checks domain, local part, subdomain patterns, and Gmail labels.
@@ -112,6 +130,104 @@ export function isNewsletter(fromEmail, labels, displayName) {
   }
 
   return false;
+}
+
+/**
+ * Conservative check for whether a mailbox participant looks like a real
+ * human counterparty rather than a system or mailing identity.
+ * @param {string} email
+ * @param {string[]} labels
+ * @param {string} displayName
+ * @returns {boolean}
+ */
+export function isHumanContact(email, labels = [], displayName = "") {
+  if (!email) return false;
+  return !isNewsletter(email, labels, displayName);
+}
+
+function decodeBodyData(data) {
+  if (!data) return "";
+  const padded = data + "=".repeat((4 - (data.length % 4)) % 4);
+  try {
+    return Buffer.from(padded, "base64url").toString("utf8");
+  } catch {
+    try {
+      return Buffer.from(padded, "base64").toString("utf8");
+    } catch {
+      return "";
+    }
+  }
+}
+
+function htmlToText(html) {
+  if (!html) return "";
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function collectBodyParts(node, acc) {
+  if (!node || typeof node !== "object") return;
+
+  const mimeType = node.mimeType || "";
+  const bodyText = decodeBodyData(node.body?.data);
+  if (mimeType === "text/plain" && bodyText) acc.plain.push(bodyText);
+  if (mimeType === "text/html" && bodyText) acc.html.push(bodyText);
+
+  for (const part of node.parts || []) {
+    collectBodyParts(part, acc);
+  }
+}
+
+/**
+ * Extract the best available body text from a Gmail payload.
+ * @param {Record<string, any>} payload
+ * @returns {{ textPlain: string, textHtml: string, text: string }}
+ */
+export function extractMessageBody(payload) {
+  const acc = { plain: [], html: [] };
+  collectBodyParts(payload, acc);
+
+  const textPlain = acc.plain.find((x) => x.trim()) || "";
+  const textHtml = acc.html.find((x) => x.trim()) || "";
+  const text = textPlain || htmlToText(textHtml);
+
+  return { textPlain, textHtml, text };
+}
+
+/**
+ * Detect content that is obviously automated/operational noise even if the
+ * sender survives address-based filtering.
+ * @param {string} subject
+ * @param {string} snippet
+ * @param {string} bodyText
+ * @returns {boolean}
+ */
+export function isAutomatedContent(subject = "", snippet = "", bodyText = "") {
+  const hay = `${subject}\n${snippet}\n${bodyText}`.trim();
+  if (!hay) return false;
+  return AUTOMATED_CONTENT_PATTERNS.some((pattern) => pattern.test(hay));
+}
+
+/**
+ * Build a compact, human-readable summary string from the best available
+ * subject/snippet/body fields.
+ * @param {{ subject?: string, snippet?: string, bodyText?: string }} parts
+ * @returns {string | undefined}
+ */
+export function buildEmailDetail({ subject = "", snippet = "", bodyText = "" }) {
+  const pick =
+    snippet.trim() ||
+    bodyText.trim().split(/\r?\n/).map((line) => line.trim()).find(Boolean) ||
+    subject.trim();
+
+  if (!pick) return undefined;
+  return pick.length > 240 ? `${pick.slice(0, 237)}...` : pick;
 }
 
 /**

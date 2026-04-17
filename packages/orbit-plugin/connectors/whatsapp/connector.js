@@ -13,6 +13,7 @@ export default class WhatsAppConnector extends BaseConnector {
   constructor(identityCache) {
     super("whatsapp", "realtime", identityCache);
     this._home = homedir();
+    this._includeGroups = process.env.ORBIT_WHATSAPP_INCLUDE_GROUPS === "true";
   }
 
   /**
@@ -63,6 +64,7 @@ export default class WhatsAppConnector extends BaseConnector {
         if (!chatJid || isBusinessJid(chatJid)) continue;
 
         const isGroup = isGroupJid(chatJid);
+        if (isGroup && !this._includeGroups) continue;
         const messages = conv.messages || [];
 
         for (const wrapper of messages) {
@@ -102,7 +104,7 @@ export default class WhatsAppConnector extends BaseConnector {
 
           signals.push({
             contactName,
-            channel: isGroup ? "whatsapp_group" : "whatsapp_dm",
+            channel: "whatsapp_dm",
             timestamp,
             detail: detail || undefined,
             isGroup,
@@ -183,6 +185,13 @@ export default class WhatsAppConnector extends BaseConnector {
       return null;
     }
 
+    // Product direction for now: keep WhatsApp DMs only unless explicitly
+    // overridden in env for debugging or later experiments.
+    if (isGroup && !this._includeGroups) {
+      this.stats.filtered++;
+      return null;
+    }
+
     // Resolve identity
     // In groups: resolve the sender. In DMs: resolve the chat partner.
     const resolveTarget = isGroup ? senderJid : chatJid;
@@ -213,7 +222,7 @@ export default class WhatsAppConnector extends BaseConnector {
     return {
       contactName,
       contactPhone,
-      channel: "whatsapp",
+      channel: "whatsapp_dm",
       timestamp,
       detail: detail || undefined,
       isGroup,
