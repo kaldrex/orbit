@@ -9,7 +9,7 @@
 | Onboarding | https://orbit-mu-roan.vercel.app/onboarding |
 | Dashboard | https://orbit-mu-roan.vercel.app/dashboard |
 | API base | https://orbit-mu-roan.vercel.app/api/v1 |
-| GitHub repo | https://github.com/Sanchay-T/orbit |
+| GitHub repo | https://github.com/kaldrex/orbit |
 
 ## Credentials
 
@@ -135,7 +135,7 @@ ssh claw  # password-less, key-based
 ## Git state
 
 ```
-Repo: github.com/Sanchay-T/orbit
+Repo: github.com/kaldrex/orbit
 Branch: main
 Latest commits (top to bottom, newest first):
   aa22759 fix: expand Gmail newsletter filter
@@ -177,7 +177,7 @@ Latest commits (top to bottom, newest first):
 ## Marketplace
 
 ```bash
-openclaw plugins install orbit --marketplace Sanchay-T/orbit --dangerously-force-unsafe-install
+openclaw plugins install orbit --marketplace kaldrex/orbit --dangerously-force-unsafe-install
 ```
 
 The `--dangerously-force-unsafe-install` flag is required because the plugin uses `child_process` (to call `gws` and `openclaw agent`) and env-var + network-send (legitimate API auth), which OpenClaw's security scanner flags as suspicious.
