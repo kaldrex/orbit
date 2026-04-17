@@ -5,9 +5,9 @@
 // endpoint every 30 seconds. Retries on failure, graceful shutdown flush.
 
 const DEFAULT_API_URL = "https://orbit-mu-roan.vercel.app/api/v1";
-const FLUSH_INTERVAL_MS = 30_000;
+const FLUSH_INTERVAL_MS = 5_000;
 const DEDUP_WINDOW_MS = 5 * 60_000;
-const MAX_PER_FLUSH = 50;
+const MAX_PER_FLUSH = 500;
 const MAX_RETRIES = 3;
 
 export class SignalBuffer {
