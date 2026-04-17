@@ -73,8 +73,8 @@ function normalizeCategory(cat) {
 }
 
 export default definePluginEntry({
-  id: "orbit-saas",
-  name: "Orbit SaaS — Relationship Intelligence",
+  id: "orbit-connector",
+  name: "Orbit — Relationship Intelligence",
   description:
     "Auto-builds your relationship graph from WhatsApp, Calendar, Gmail, Slack, Linear. " +
     "Query contacts, get going-cold alerts, add relationship context.",
