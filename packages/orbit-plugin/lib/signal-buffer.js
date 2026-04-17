@@ -58,20 +58,23 @@ export class SignalBuffer {
     if (!signal?.participants?.length || !signal?.channel) return;
 
     const ts = signal.timestamp || new Date().toISOString();
-    const now = Date.now();
 
-    // Check dedup for each participant in this channel
+    // Dedup by participant+channel+day-bucket. Using the signal's own
+    // timestamp (not wall-clock) means a bootstrap that dumps years of
+    // history doesn't collapse into one signal per contact — we still
+    // preserve one interaction per day per channel.
+    const tsMs = new Date(ts).getTime() || Date.now();
+    const dayBucket = Math.floor(tsMs / 86400_000);
+
     const dominated = signal.participants.every((p) => {
-      const key = `${p}|${signal.channel}`;
-      const lastSeen = this._seen.get(key);
-      return lastSeen && now - lastSeen < DEDUP_WINDOW_MS;
+      const key = `${p}|${signal.channel}|${dayBucket}`;
+      return this._seen.has(key);
     });
 
-    if (dominated) return; // All participants already signaled recently on this channel
+    if (dominated) return;
 
-    // Update dedup timestamps
     for (const p of signal.participants) {
-      this._seen.set(`${p}|${signal.channel}`, now);
+      this._seen.set(`${p}|${signal.channel}|${dayBucket}`, tsMs);
     }
 
     // Queue the interaction
