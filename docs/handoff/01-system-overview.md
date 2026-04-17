@@ -125,7 +125,7 @@ Next.js 16 app on Vercel at `orbit-mu-roan.vercel.app`.
 1. User signs up on `/signup`
 2. Redirected to `/dashboard`, can visit `/onboarding`
 3. Clicks "Generate install command" → `POST /api/keys` creates key → shown once
-4. User pastes on agent machine: `openclaw plugins install orbit --marketplace Sanchay-T/orbit && openclaw env set ORBIT_API_KEY=<key>`
+4. User pastes on agent machine: `openclaw plugins install orbit --marketplace kaldrex/orbit && openclaw env set ORBIT_API_KEY=<key>`
 5. Plugin starts, POSTs `/api/v1/capabilities` — onboarding UI shows green dots for wired channels
 6. User can see install succeeded; bootstrap runs in background
 7. Within 10 min: dashboard populates

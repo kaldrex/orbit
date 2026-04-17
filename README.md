@@ -55,7 +55,7 @@ Requires `.env.local` with Neo4j + Supabase credentials — see `docs/handoff/02
 ## Install the plugin on your OpenClaw agent
 
 ```bash
-openclaw plugins install orbit --marketplace Sanchay-T/orbit --dangerously-force-unsafe-install
+openclaw plugins install orbit --marketplace kaldrex/orbit --dangerously-force-unsafe-install
 openclaw env set ORBIT_API_KEY=<key-from-dashboard>
 ```
 
