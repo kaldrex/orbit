@@ -128,27 +128,33 @@ export class ConnectorRegistry {
   startBatchPolls() {
     const state = loadBootstrapState();
 
+    // First: bootstrap ALL connectors that haven't run yet — including realtime
+    // connectors like WhatsApp that read history files on first install.
+    for (const [name, { connector }] of this._connectors) {
+      if (state[name]) continue; // already bootstrapped
+      (async () => {
+        this._log.info?.(
+          `[connector-registry] ${name}: running first-time bootstrap (full history)…`
+        );
+        await this._runBootstrap(name, connector);
+        state[name] = { bootstrappedAt: new Date().toISOString() };
+        saveBootstrapState(state);
+      })();
+    }
+
+    // Then: schedule recurring polls only for batch-mode connectors
     for (const [name, { connector, manifest }] of this._connectors) {
       if (manifest.mode !== "batch") continue;
 
       const intervalMs = (manifest.pollIntervalHours || 1) * 3600_000;
 
-      // Run bootstrap on first ever run, then poll, then schedule
-      (async () => {
-        if (!state[name]) {
-          this._log.info?.(
-            `[connector-registry] ${name}: running first-time bootstrap (full history)…`
-          );
-          await this._runBootstrap(name, connector);
-          state[name] = { bootstrappedAt: new Date().toISOString() };
-          saveBootstrapState(state);
-        } else {
-          // Already bootstrapped — just catch up on new data
+      // If already bootstrapped, kick off a catch-up poll immediately
+      if (state[name]) {
+        (async () => {
           await this._runBatchPoll(name, connector);
-        }
-      })();
+        })();
+      }
 
-      // Schedule recurring poll
       const timer = setInterval(
         () => this._runBatchPoll(name, connector),
         intervalMs
