@@ -41,17 +41,21 @@ export default class GmailConnector extends BaseConnector {
     // Get message IDs
     let listRaw;
     try {
+      // Gmail's `after:` operator wants YYYY/MM/DD format, not epoch seconds.
+      // For bootstrap (since=epoch), skip the filter entirely to get recent messages.
+      const params = {
+        userId: "me",
+        maxResults: 100,
+      };
+      if (since && since.getTime() > 0) {
+        const y = since.getUTCFullYear();
+        const m = String(since.getUTCMonth() + 1).padStart(2, "0");
+        const d = String(since.getUTCDate()).padStart(2, "0");
+        params.q = `after:${y}/${m}/${d}`;
+      }
       listRaw = execFileSync(
         "gws",
-        [
-          "gmail", "users", "messages", "list",
-          "--params",
-          JSON.stringify({
-            userId: "me",
-            maxResults: 100,
-            q: `after:${Math.floor(since.getTime() / 1000)}`,
-          }),
-        ],
+        ["gmail", "users", "messages", "list", "--params", JSON.stringify(params)],
         { encoding: "utf8", maxBuffer: 50 * 1024 * 1024 }
       );
     } catch {

@@ -9,7 +9,7 @@ import { issueWeight } from "./rules.js";
 const LINEAR_API_URL = "https://api.linear.app/graphql";
 
 const ISSUES_QUERY = `
-  query RecentIssues($since: DateTime!) {
+  query RecentIssues($since: DateTimeOrDuration!) {
     issues(
       filter: { updatedAt: { gte: $since } }
       first: 100
