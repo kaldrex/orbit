@@ -1,19 +1,21 @@
 {
   "id": "orbit-connector",
-  "name": "Orbit Connector Framework",
-  "description": "Automatic relationship graph builder — captures interactions from WhatsApp, Calendar, Gmail, Slack, Linear and pushes them to Orbit.",
-  "version": "0.1.0",
-  "config": {
-    "ORBIT_API_KEY": {
-      "type": "string",
-      "required": true,
-      "description": "Orbit API key for ingesting signals. Get one from your Orbit dashboard."
-    },
-    "ORBIT_API_URL": {
-      "type": "string",
-      "required": false,
-      "default": "https://orbit-mu-roan.vercel.app/api/v1",
-      "description": "Orbit API base URL. Override for self-hosted instances."
+  "name": "Orbit — Relationship Intelligence",
+  "description": "Automatic relationship graph builder. Ingests WhatsApp, Calendar, Gmail, Slack, and Linear. Delivers pre-meeting briefs and going-cold digests. Exposes tools for network lookup, person cards, and intro-path search.",
+  "version": "0.2.0",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "apiKey": {
+        "type": "string",
+        "description": "Orbit API key for ingesting signals. Get one from your Orbit dashboard."
+      },
+      "apiUrl": {
+        "type": "string",
+        "description": "Orbit API base URL. Override for self-hosted instances.",
+        "default": "https://orbit-mu-roan.vercel.app/api/v1"
+      }
     }
   }
 }
