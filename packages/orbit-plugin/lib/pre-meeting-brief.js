@@ -103,12 +103,15 @@ export class PreMeetingBrief {
         "gws",
         [
           "calendar", "events", "list",
-          "--calendarId", "primary",
-          "--singleEvents", "true",
-          "--timeMin", now.toISOString(),
-          "--timeMax", future.toISOString(),
-          "--orderBy", "startTime",
-          "--maxResults", "20",
+          "--params",
+          JSON.stringify({
+            calendarId: "primary",
+            singleEvents: true,
+            timeMin: now.toISOString(),
+            timeMax: future.toISOString(),
+            orderBy: "startTime",
+            maxResults: 20,
+          }),
         ],
         { encoding: "utf8", timeout: 15000 }
       );

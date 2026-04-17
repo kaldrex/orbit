@@ -44,16 +44,13 @@ export default class GmailConnector extends BaseConnector {
       listRaw = execFileSync(
         "gws",
         [
-          "gmail",
-          "users",
-          "messages",
-          "list",
-          "--userId",
-          "me",
-          "--maxResults",
-          "100",
-          "--q",
-          `after:${Math.floor(since.getTime() / 1000)}`,
+          "gmail", "users", "messages", "list",
+          "--params",
+          JSON.stringify({
+            userId: "me",
+            maxResults: 100,
+            q: `after:${Math.floor(since.getTime() / 1000)}`,
+          }),
         ],
         { encoding: "utf8" }
       );
@@ -83,26 +80,14 @@ export default class GmailConnector extends BaseConnector {
         metaRaw = execFileSync(
           "gws",
           [
-            "gmail",
-            "users",
-            "messages",
-            "get",
-            "--userId",
-            "me",
-            "--id",
-            messageId,
-            "--format",
-            "metadata",
-            "--metadataHeaders",
-            "From",
-            "--metadataHeaders",
-            "To",
-            "--metadataHeaders",
-            "Cc",
-            "--metadataHeaders",
-            "Subject",
-            "--metadataHeaders",
-            "Date",
+            "gmail", "users", "messages", "get",
+            "--params",
+            JSON.stringify({
+              userId: "me",
+              id: messageId,
+              format: "metadata",
+              metadataHeaders: ["From", "To", "Cc", "Subject", "Date"],
+            }),
           ],
           { encoding: "utf8" }
         );

@@ -44,19 +44,15 @@ export default class CalendarConnector extends BaseConnector {
       raw = execFileSync(
         "gws",
         [
-          "calendar",
-          "events",
-          "list",
-          "--calendarId",
-          "primary",
-          "--maxResults",
-          "2500",
-          "--singleEvents",
-          "true",
-          "--timeMin",
-          since.toISOString(),
-          "--orderBy",
-          "startTime",
+          "calendar", "events", "list",
+          "--params",
+          JSON.stringify({
+            calendarId: "primary",
+            maxResults: 2500,
+            singleEvents: true,
+            timeMin: since.toISOString(),
+            orderBy: "startTime",
+          }),
         ],
         { encoding: "utf8" }
       );
