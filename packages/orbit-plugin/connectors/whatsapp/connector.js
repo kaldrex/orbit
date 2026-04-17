@@ -3,7 +3,7 @@
 // Processes GOWA webhook events, filters spam and business messages,
 // resolves identities, and emits interaction signals.
 
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { BaseConnector } from "../base-connector.js";
@@ -23,6 +23,94 @@ export default class WhatsAppConnector extends BaseConnector {
     const gowaPath = join(this._home, "gowa", "storages");
     const wacliPath = join(this._home, ".wacli", "wacli.db");
     return existsSync(gowaPath) || existsSync(wacliPath);
+  }
+
+  /**
+   * First-run historical scan of GOWA storages.
+   * Reads all history-*-RECENT.json files, iterates messages, applies the
+   * same filters as processEvent, and emits signals.
+   *
+   * This can process tens of thousands of messages. Runs in bounded
+   * batches internally to avoid blocking the event loop.
+   */
+  async bootstrap() {
+    const storagesDir = join(this._home, "gowa", "storages");
+    if (!existsSync(storagesDir)) {
+      return [];
+    }
+
+    let files;
+    try {
+      files = readdirSync(storagesDir)
+        .filter((f) => /history-.*-RECENT\.json$/.test(f));
+    } catch {
+      return [];
+    }
+
+    const signals = [];
+    for (const file of files) {
+      let data;
+      try {
+        data = JSON.parse(readFileSync(join(storagesDir, file), "utf8"));
+      } catch {
+        this.stats.errors++;
+        continue;
+      }
+
+      const conversations = data.conversations || [];
+      for (const conv of conversations) {
+        const chatJid = conv.ID;
+        if (!chatJid || isBusinessJid(chatJid)) continue;
+
+        const isGroup = isGroupJid(chatJid);
+        const messages = conv.messages || [];
+
+        for (const msg of messages) {
+          const senderJid = msg.participant || msg.key?.participant || chatJid;
+          const fromMe = msg.key?.fromMe;
+          const text =
+            msg.message?.conversation ||
+            msg.message?.extendedTextMessage?.text ||
+            "";
+
+          if (isSpamMessage(text)) {
+            this.stats.filtered++;
+            continue;
+          }
+          if (isGroup && fromMe) {
+            this.stats.filtered++;
+            continue;
+          }
+
+          const resolveTarget = isGroup ? senderJid : chatJid;
+          const contactName = this.identityCache.resolveJid(resolveTarget);
+          if (!contactName) {
+            this.stats.filtered++;
+            continue;
+          }
+
+          const epochSec = msg.messageTimestamp;
+          const timestamp = epochSec
+            ? new Date(Number(epochSec) * 1000).toISOString()
+            : new Date().toISOString();
+
+          const detail = text.length > 100 ? text.slice(0, 97) + "..." : text;
+
+          signals.push({
+            contactName,
+            channel: isGroup ? "whatsapp_group" : "whatsapp_dm",
+            timestamp,
+            detail: detail || undefined,
+            isGroup,
+          });
+        }
+      }
+
+      // Yield back to event loop between files so we don't block
+      await new Promise((r) => setImmediate(r));
+    }
+
+    return signals;
   }
 
   /**

@@ -11,6 +11,8 @@ import {
   toReagraphNodes,
 } from "@/lib/graph-transforms";
 
+const MAX_RENDERED_NODES = 20; // TEMP: testing if small graphs render
+
 export function useGraphData(
   activeFilter: string,
   selfNodeId: string,
@@ -42,14 +44,26 @@ export function useGraphData(
     if (!raw) return { nodes: [], edges: [] };
 
     const allNodes = toReagraphNodes(raw.nodes, selfNodeId);
-    // Show all edges. For large graphs (500+), consider filtering low-weight ones.
     const prunedLinks = showSelfEdges
       ? raw.links
       : raw.links.filter((l) => l.type === "knows" || (l.weight ?? 0) >= 1);
     const allEdges = toReagraphEdges(prunedLinks);
-    const filtered = filterReagraphNodes(allNodes, activeFilter, selfNodeId);
+    let filtered = filterReagraphNodes(allNodes, activeFilter, selfNodeId);
+
+    // Cap node count to prevent WebGL context loss on large graphs.
+    // Keep self node + top N by score.
+    if (filtered.length > MAX_RENDERED_NODES) {
+      const self = filtered.filter((n) => n.id === selfNodeId);
+      const rest = filtered
+        .filter((n) => n.id !== selfNodeId)
+        .sort((a, b) => b.data.score - a.data.score)
+        .slice(0, MAX_RENDERED_NODES - self.length);
+      filtered = [...self, ...rest];
+    }
+
     const keep = new Set(filtered.map((n) => n.id));
     const filteredEdges = filterEdgesByNodes(allEdges, keep);
+    console.log("[orbit-debug] nodes:", filtered.length, "edges:", filteredEdges.length, "sample node:", filtered[0]);
     return { nodes: filtered, edges: filteredEdges };
   }, [raw, activeFilter, selfNodeId, showSelfEdges]);
 

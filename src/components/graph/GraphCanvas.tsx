@@ -47,6 +47,21 @@ export default function GraphCanvas({
   });
 
   const { nodes, edges, loading, error } = useGraphData(activeFilter, selfNodeId);
+  const [contextLost, setContextLost] = useState(false);
+
+  // Recover from WebGL context loss
+  useEffect(() => {
+    const canvas = document.querySelector("canvas");
+    if (!canvas) return;
+    const onLost = (e: Event) => { e.preventDefault(); setContextLost(true); };
+    const onRestored = () => setContextLost(false);
+    canvas.addEventListener("webglcontextlost", onLost);
+    canvas.addEventListener("webglcontextrestored", onRestored);
+    return () => {
+      canvas.removeEventListener("webglcontextlost", onLost);
+      canvas.removeEventListener("webglcontextrestored", onRestored);
+    };
+  }, [loading]);
 
   // Auto-fit on load + filter change
   useEffect(() => {
@@ -133,6 +148,18 @@ export default function GraphCanvas({
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-400">
             Failed to load graph: {error}
+          </div>
+        </div>
+      ) : contextLost ? (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="text-center">
+            <p className="text-sm text-zinc-400 mb-2">GPU rendering interrupted</p>
+            <button
+              onClick={() => { setContextLost(false); window.location.reload(); }}
+              className="text-xs text-white bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded"
+            >
+              Reload
+            </button>
           </div>
         </div>
       ) : loading ? (

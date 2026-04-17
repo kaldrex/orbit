@@ -1,0 +1,21 @@
+{
+  "$schema": "https://openclaw.ai/schemas/marketplace.json",
+  "name": "orbit",
+  "owner": {
+    "name": "Sanchay T",
+    "url": "https://github.com/Sanchay-T"
+  },
+  "metadata": {
+    "description": "Orbit plugins for OpenClaw — relationship intelligence from your messaging + calendar data.",
+    "homepage": "https://orbit-mu-roan.vercel.app"
+  },
+  "plugins": [
+    {
+      "name": "orbit",
+      "source": "./packages/orbit-plugin",
+      "description": "Automatic relationship graph builder. Ingests WhatsApp, Calendar, Gmail, Slack, Linear. Delivers pre-meeting briefs and going-cold digests. Exposes 8 tools (orbit_lookup, orbit_person_card, orbit_going_cold, orbit_graph_stats, orbit_status, orbit_network_search, orbit_ingest, orbit_log_interaction).",
+      "version": "0.2.0",
+      "keywords": ["relationships", "crm", "networking", "graph"]
+    }
+  ]
+}

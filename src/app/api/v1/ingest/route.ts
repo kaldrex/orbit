@@ -10,6 +10,8 @@ import {
 } from "@/lib/neo4j";
 import { getAgentOrSessionAuth } from "@/lib/api-auth";
 import { waitUntil } from "@vercel/functions";
+import { normalizeCategory } from "@/lib/categories";
+import { filterIngestPayload } from "@/lib/ingest-filters";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -62,13 +64,28 @@ export async function POST(request: NextRequest) {
 
   const { userId, selfNodeId } = auth;
 
-  // Return accepted counts immediately
+  // Filter the payload through the same filters processIngest uses, so the
+  // counts we report match what will actually land in Neo4j.
+  const { interactions: cleanInteractions, persons: cleanPersons } =
+    filterIngestPayload(interactions, persons);
+
+  const validInteractions = cleanInteractions.filter(
+    (ix) => Array.isArray(ix.participants) && ix.participants.length > 0
+  );
+
+  // INTERACTED edges: one per (selfNode, participant) pair per interaction
+  let expectedInteractedEdges = 0;
+  // KNOWS edges: C(n,2) = n*(n-1)/2 per interaction where n = participant count >= 2
+  let expectedKnowsEdges = 0;
+  for (const ix of validInteractions) {
+    const n = ix.participants!.length;
+    expectedInteractedEdges += n;
+    if (n >= 2) expectedKnowsEdges += (n * (n - 1)) / 2;
+  }
+
   const accepted = {
-    persons: persons.filter((p: { name?: string }) => p.name).length,
-    interactions: interactions.filter(
-      (ix: { participants?: unknown }) =>
-        Array.isArray(ix.participants) && ix.participants.length > 0
-    ).length,
+    persons: cleanPersons.filter((p) => p.name).length,
+    interactions: validInteractions.length,
   };
 
   const promise = processIngest(userId, selfNodeId, persons, interactions);
@@ -84,8 +101,15 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     accepted,
-    // Backward compat: old callers may read stats
-    stats: { personsCreated: 0, personsUpdated: 0, interactionsCreated: accepted.interactions, edgesCreated: 0 },
+    // Reflects what processIngest will create (after dedup on the Neo4j side).
+    // These are upper bounds — actual writes may be slightly lower if names
+    // dedupe or MERGE hits an existing edge.
+    stats: {
+      personsCreated: accepted.persons,
+      personsUpdated: 0,
+      interactionsCreated: expectedInteractedEdges,
+      edgesCreated: expectedKnowsEdges,
+    },
   });
 }
 
@@ -112,10 +136,16 @@ async function processIngest(
   }>
 ) {
   try {
+    // Step 0: Filter junk (bots, newsletters, phone-number names) + normalize categories
+    const { interactions: cleanInteractions, persons: cleanPersons, filtered } = filterIngestPayload(interactions, persons);
+    if (filtered.bots + filtered.junkParticipants + filtered.newsletters > 0) {
+      console.log(`[ingest] filtered: ${JSON.stringify(filtered)}`);
+    }
+
     // Step 1: Batch upsert person metadata
     // Deduplicate persons by lowercased name (last-writer-wins on metadata)
-    const personMap = new Map<string, typeof persons[number]>();
-    for (const p of persons) {
+    const personMap = new Map<string, typeof cleanPersons[number]>();
+    for (const p of cleanPersons) {
       if (p.name) personMap.set(p.name.trim().toLowerCase(), p);
     }
     const personItems: PersonBatchItem[] = Array.from(personMap.values())
@@ -124,7 +154,7 @@ async function processIngest(
         newId: `p_${crypto.randomUUID().slice(0, 8)}`,
         company: p.company || null,
         email: p.email || null,
-        category: p.category || null,
+        category: normalizeCategory(p.category),
         title: p.title || null,
         relationship_to_me: p.relationship_to_me || null,
       }));
@@ -135,7 +165,7 @@ async function processIngest(
 
     // Step 2: Collect all unique participant names across interactions
     const allParticipantNames = new Set<string>();
-    for (const ix of interactions) {
+    for (const ix of cleanInteractions) {
       if (!Array.isArray(ix.participants)) continue;
       for (const name of ix.participants) {
         if (name && typeof name === "string") {
@@ -163,7 +193,7 @@ async function processIngest(
     // Collect KNOWS edges per interaction (multi-participant)
     const knowsItems: KnowsBatchItem[] = [];
 
-    for (const ix of interactions) {
+    for (const ix of cleanInteractions) {
       if (!Array.isArray(ix.participants) || ix.participants.length === 0) continue;
 
       const resolvedIds: string[] = [];

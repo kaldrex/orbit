@@ -53,18 +53,18 @@ export interface CategoryMeta {
 }
 
 export const CATEGORY_META: Record<string, CategoryMeta> = {
-  self:      { color: "#FFFFFF", label: "Self" },
-  team:      { color: "#E4E4E7", label: "Team" },
-  investor:  { color: "#3B82F6", label: "Investor" },
-  sponsor:   { color: "#22C55E", label: "Sponsor" },
-  fellow:    { color: "#EAB308", label: "Fellow" },
-  media:     { color: "#EC4899", label: "Media" },
-  community: { color: "#06B6D4", label: "Community" },
-  gov:       { color: "#8B5CF6", label: "Gov" },
-  founder:   { color: "#F97316", label: "Founder" },
-  friend:    { color: "#14B8A6", label: "Friend" },
-  press:     { color: "#EF4444", label: "Press" },
-  other:     { color: "#52525B", label: "Other" },
+  self:              { color: "#FFFFFF", label: "Self" },
+  team:              { color: "#E4E4E7", label: "Team" },
+  investor:          { color: "#3B82F6", label: "Investor" },
+  sponsor:           { color: "#22C55E", label: "Sponsor" },
+  fellow:            { color: "#EAB308", label: "Fellow" },
+  media:             { color: "#EC4899", label: "Media" },
+  community:         { color: "#06B6D4", label: "Community" },
+  gov:               { color: "#8B5CF6", label: "Gov" },
+  founder:           { color: "#F97316", label: "Founder" },
+  friend:            { color: "#14B8A6", label: "Friend" },
+  press:             { color: "#EF4444", label: "Press" },
+  other:             { color: "#52525B", label: "Other" },
 };
 
 export function computeCold(ts: string | null, score: number): boolean {
@@ -103,7 +103,6 @@ export function toReagraphNodes(apiNodes: ApiNode[], selfNodeId: string): Reagra
       out.push({
         id: n.id,
         label: n.name,
-        subLabel: n.company ?? "",
         fill: "#FFFFFF",
         size: 22,
         data: {
@@ -116,11 +115,10 @@ export function toReagraphNodes(apiNodes: ApiNode[], selfNodeId: string): Reagra
       continue;
     }
 
-    const showLabel = n.score >= 5;
+    // Always show name. Score controls node size, not label visibility.
     out.push({
       id: n.id,
-      label: showLabel ? n.name : "",
-      subLabel: showLabel ? (n.company ?? "") : "",
+      label: n.name,
       fill: meta.color,
       size: clamp(n.score * 2.2 + 3, 4, 24),
       data: {

@@ -4,12 +4,35 @@
 // dynamically loads each connector, and manages batch poll intervals
 // and real-time event routing.
 
-import { readdirSync, readFileSync, existsSync } from "node:fs";
+import { readdirSync, readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
+import { homedir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CONNECTORS_DIR = join(__dirname, "..", "connectors");
+
+// Bootstrap state file — tracks which connectors have completed their
+// first-run historical sync. Lives in ~/.orbit/bootstrap.json
+const STATE_DIR = join(homedir(), ".orbit");
+const STATE_FILE = join(STATE_DIR, "bootstrap.json");
+
+function loadBootstrapState() {
+  try {
+    return JSON.parse(readFileSync(STATE_FILE, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function saveBootstrapState(state) {
+  try {
+    mkdirSync(STATE_DIR, { recursive: true });
+    writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+  } catch {
+    // best-effort; bootstrap will just re-run next time
+  }
+}
 
 export class ConnectorRegistry {
   /**
@@ -99,18 +122,33 @@ export class ConnectorRegistry {
 
   /**
    * Start batch polling for all batch-mode connectors.
-   * Runs each poll immediately, then on the interval from manifest.pollIntervalHours.
+   * Runs each connector's bootstrap() first if not yet bootstrapped,
+   * then schedules regular poll() on the interval from manifest.pollIntervalHours.
    */
   startBatchPolls() {
+    const state = loadBootstrapState();
+
     for (const [name, { connector, manifest }] of this._connectors) {
       if (manifest.mode !== "batch") continue;
 
       const intervalMs = (manifest.pollIntervalHours || 1) * 3600_000;
 
-      // Run immediately
-      this._runBatchPoll(name, connector);
+      // Run bootstrap on first ever run, then poll, then schedule
+      (async () => {
+        if (!state[name]) {
+          this._log.info?.(
+            `[connector-registry] ${name}: running first-time bootstrap (full history)…`
+          );
+          await this._runBootstrap(name, connector);
+          state[name] = { bootstrappedAt: new Date().toISOString() };
+          saveBootstrapState(state);
+        } else {
+          // Already bootstrapped — just catch up on new data
+          await this._runBatchPoll(name, connector);
+        }
+      })();
 
-      // Schedule recurring
+      // Schedule recurring poll
       const timer = setInterval(
         () => this._runBatchPoll(name, connector),
         intervalMs
@@ -119,7 +157,36 @@ export class ConnectorRegistry {
       this._timers.set(name, timer);
 
       this._log.info?.(
-        `[connector-registry] batch poll started: ${name} every ${manifest.pollIntervalHours}h`
+        `[connector-registry] batch poll scheduled: ${name} every ${manifest.pollIntervalHours}h`
+      );
+    }
+  }
+
+  /**
+   * Run a connector's full historical bootstrap. Pushes all signals
+   * through the buffer. Marks the connector as bootstrapped on success.
+   */
+  async _runBootstrap(name, connector) {
+    try {
+      const start = Date.now();
+      const signals = await connector.bootstrap();
+
+      for (const signal of signals) {
+        this._pushSignal(signal);
+        connector.stats.processed++;
+      }
+
+      connector.markSynced(new Date());
+      connector.markBootstrapped();
+      await this._signalBuffer.flush();
+
+      this._log.info?.(
+        `[connector-registry] ${name} bootstrap: ${signals.length} signals in ${Math.round((Date.now() - start) / 1000)}s`
+      );
+    } catch (err) {
+      connector.stats.errors++;
+      this._log.warn?.(
+        `[connector-registry] ${name} bootstrap error: ${err.message}`
       );
     }
   }

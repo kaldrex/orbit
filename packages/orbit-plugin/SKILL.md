@@ -178,6 +178,39 @@ Use these precisely — the plugin normalizes non-standard categories to "other"
 - **press** — press/media contacts specifically for coverage
 - **other** — can't determine. AVOID this — always try to categorize.
 
+## Server-Side Safety Net
+
+The Orbit API automatically filters garbage before writing to the graph:
+- **Bot names** (wazowski, chad, axe, kite, slackbot) are dropped
+- **Newsletter emails** (noreply@, support@, @nvidia.com, @substack.com, etc.) are dropped
+- **Phone-number-as-name** participants are dropped
+- **Email-as-name** participants are dropped
+- **Non-standard categories** (whatsapp, network, calendar-meeting) are normalized to "other" or "fellow"
+
+Don't rely on this — still try to send clean data. But know that the server is your last line of defense.
+
+## Signal Quality
+
+The graph uses weighted scoring: not all interactions are equal.
+
+**High-signal:**
+- 1:1 meetings (calendar_small): 1.5x weight
+- Active WhatsApp DMs: 1.2x with 1.2x reciprocity bonus
+- Personal email threads: 1.0x
+
+**Low-signal:**
+- WhatsApp group messages: 0.3x
+- Large meetings (4+ attendees): 0.8x
+- Slack channel co-presence: 0.2x
+
+**Noise (filtered):**
+- Newsletters, marketing emails: 0x (dropped)
+- Auto-events (flights, reminders): 0x (dropped)
+
+**Recency matters:** Signals decay exponentially with a ~60-day half-life. An interaction today is worth ~7x more than one 6 months ago.
+
+**Prioritize:** Real DMs over group presence. Scheduled meetings over ambient co-occurrence. Personal emails over CCs.
+
 ## Quality Over Quantity
 
 10 well-reasoned contacts with rich relationship context are worth more than 1,000 bare names.

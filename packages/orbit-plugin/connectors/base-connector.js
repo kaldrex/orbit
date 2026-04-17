@@ -14,7 +14,36 @@ export class BaseConnector {
     this.mode = mode;
     this.identityCache = identityCache;
     this._lastSynced = null;
+    this._bootstrapped = false;
     this.stats = { processed: 0, filtered: 0, errors: 0 };
+  }
+
+  /**
+   * First-run full historical sync. Called once when the plugin is
+   * installed for the first time. Default: delegate to poll() with a
+   * far-past since date. Connectors with expensive or paginated history
+   * (e.g. WhatsApp, Gmail) should override this to implement batched
+   * historical extraction.
+   *
+   * Returns an array of signal objects (same shape as poll()).
+   *
+   * @returns {Promise<Array<Object>>}
+   */
+  async bootstrap() {
+    // Default: pull everything since the epoch. Connectors with huge
+    // historical data should override and paginate.
+    return this.poll(new Date(0));
+  }
+
+  /**
+   * Has this connector completed its bootstrap pass?
+   */
+  get isBootstrapped() {
+    return this._bootstrapped;
+  }
+
+  markBootstrapped() {
+    this._bootstrapped = true;
   }
 
   /**

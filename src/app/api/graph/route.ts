@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { queryNeo4j } from "@/lib/neo4j";
 import { getAuthContext } from "@/lib/auth";
+import { scorePersonFromEdges } from "@/lib/scoring";
 
 export const dynamic = "force-dynamic";
 
@@ -11,11 +12,21 @@ export async function GET() {
 
   const { userId, selfNodeId } = auth;
 
-  // All Person nodes for this user
+  // All Person nodes with per-edge interaction data for real scoring.
+  // The WHERE clause filters out orphan nodes (zero connections).
   const personRows = await queryNeo4j(userId,
     `MATCH (p:Person {userId: $userId}) WHERE p.category <> "self"
-     RETURN p.id AS id, p.name AS name, p.relationship_score AS score, p.category AS category, p.company AS company, p.last_interaction_at AS lastInteractionAt
-     ORDER BY p.relationship_score DESC`
+     OPTIONAL MATCH (self:Person {id: $selfNodeId, userId: $userId})-[i:INTERACTED]-(p)
+     OPTIONAL MATCH (p)-[k:KNOWS]-(:Person {userId: $userId})
+     WITH p,
+          collect(DISTINCT {channel: i.channel, timestamp: i.timestamp}) AS interactions,
+          count(DISTINCT k) AS knowsCount
+     WHERE size(interactions) > 0 OR knowsCount > 0
+     RETURN p.id AS id, p.name AS name, p.category AS category,
+            p.company AS company, p.last_interaction_at AS lastInteractionAt,
+            interactions, knowsCount
+     ORDER BY size(interactions) + knowsCount DESC`,
+    { selfNodeId }
   );
 
   const nodes = [
@@ -27,14 +38,23 @@ export async function GET() {
       company: null,
       lastInteractionAt: null,
     },
-    ...personRows.map((r) => ({
-      id: r.id as string,
-      name: (r.name as string) || (r.id as string),
-      score: typeof r.score === "number" ? r.score : parseFloat(r.score as string) || 0,
-      category: (r.category as string) || "other",
-      company: (r.company as string) || null,
-      lastInteractionAt: (r.lastInteractionAt as string) || null,
-    })),
+    ...personRows.map((r) => {
+      // Filter out null interactions from the OPTIONAL MATCH (Neo4j returns [{channel: null, timestamp: null}] when no match)
+      const interactions = (r.interactions as { channel: string; timestamp: string }[])
+        .filter((ix) => ix.channel != null && ix.timestamp != null);
+      const knowsCount = typeof r.knowsCount === "number" ? r.knowsCount : parseInt(r.knowsCount as string, 10) || 0;
+
+      const score = scorePersonFromEdges(interactions, knowsCount);
+
+      return {
+        id: r.id as string,
+        name: (r.name as string) || (r.id as string),
+        score,
+        category: (r.category as string) || "other",
+        company: (r.company as string) || null,
+        lastInteractionAt: (r.lastInteractionAt as string) || null,
+      };
+    }),
   ];
 
   const nodeIds = new Set(nodes.map((n) => n.id));
@@ -77,9 +97,31 @@ export async function GET() {
     try { return now - Date.parse(n.lastInteractionAt) > fourteenDays; } catch { return false; }
   }).length;
 
+  // Warm contacts = score >= 5 (excluding self)
+  const warmContactsCount = nodes.filter(
+    (n) => n.category !== "self" && n.score >= 5
+  ).length;
+
+  // Total INTERACTED edge count across this user's graph
+  const [interactedRow] = await queryNeo4j(userId,
+    `MATCH (:Person {userId: $userId})-[r:INTERACTED]-(:Person {userId: $userId})
+     RETURN count(r) AS total`
+  );
+  const totalInteractions = typeof interactedRow?.total === "number"
+    ? interactedRow.total
+    : parseInt((interactedRow?.total as string) ?? "0", 10) || 0;
+  // Neo4j counts each edge twice in an undirected MATCH — halve it
+  const normalizedInteractions = Math.floor(totalInteractions / 2);
+
   return NextResponse.json({
     nodes,
     links,
-    stats: { totalPeople: nodes.length - 1, deals: 0, goingCold: goingColdCount },
+    stats: {
+      totalPeople: nodes.length - 1,
+      totalInteractions: normalizedInteractions,
+      warmContacts: warmContactsCount,
+      goingCold: goingColdCount,
+      deals: 0,
+    },
   });
 }

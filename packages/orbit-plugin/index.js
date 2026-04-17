@@ -12,6 +12,11 @@ import { IdentityCache } from "./lib/identity-cache.js";
 import { SignalBuffer } from "./lib/signal-buffer.js";
 import { ConnectorRegistry } from "./lib/connector-registry.js";
 import { OrbitClient, asToolText, toolError } from "./lib/orbit-client.js";
+import { introspectCapabilities } from "./lib/capabilities.js";
+import { PreMeetingBrief } from "./lib/pre-meeting-brief.js";
+import { GoingColdDigest } from "./lib/going-cold-digest.js";
+
+const CAPABILITY_REPORT_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 
 const require = createRequire(import.meta.url);
 
@@ -81,6 +86,33 @@ export default definePluginEntry({
 
         registry.startBatchPolls();
         setupDone = true;
+
+        // Report capabilities on startup and every 30 min thereafter
+        const sendCapabilityReport = async () => {
+          try {
+            const caps = introspectCapabilities();
+            await client.post("/capabilities", caps);
+            logger.info(
+              `[orbit] capability report sent: channels=${
+                Object.entries(caps.channels).filter(([, v]) => v).map(([k]) => k).join(",") || "none"
+              }`
+            );
+          } catch (err) {
+            logger.warn("[orbit] capability report failed:", err.message);
+          }
+        };
+        sendCapabilityReport();
+        setInterval(sendCapabilityReport, CAPABILITY_REPORT_INTERVAL_MS).unref?.();
+
+        // Start founder-value workers (opt-in via env vars)
+        if (process.env.ORBIT_ENABLE_BRIEFS !== "false") {
+          const preMeeting = new PreMeetingBrief({ orbitClient: client, logger });
+          preMeeting.start();
+        }
+        if (process.env.ORBIT_ENABLE_DIGEST !== "false") {
+          const digest = new GoingColdDigest({ orbitClient: client, logger });
+          digest.start();
+        }
       } catch (err) {
         logger.error("[orbit] connector setup failed:", err);
       }
@@ -348,7 +380,43 @@ export default definePluginEntry({
       },
     });
 
-    logger.info(`[orbit] registered (tools=7, read=4, write=2, status=1). API: ${client.baseUrl}`);
+    api.registerTool({
+      name: "orbit_network_search",
+      description:
+        "Search the user's relationship network. Use this when the user asks " +
+        "'who do I know at X?', 'who in my network works at Y?', or 'find someone " +
+        "who does Z'. Returns direct contacts matching the query, plus intro " +
+        "paths through the user's network for contacts they don't know directly.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Company name, person name, role, or topic to search for",
+          },
+          limit: {
+            type: "number",
+            description: "Max direct matches to return (default 10, max 50)",
+          },
+        },
+        required: ["query"],
+      },
+      async execute(_id, params) {
+        try {
+          const data = await client.get("/search", {
+            q: params.query,
+            limit: params.limit,
+          });
+          return asToolText(data);
+        } catch (e) {
+          return toolError(e.message);
+        }
+      },
+    });
+
+    logger.info(
+      `[orbit] registered (tools=8, read=5, write=2, status=1). API: ${client.baseUrl}`
+    );
   },
 });
 
