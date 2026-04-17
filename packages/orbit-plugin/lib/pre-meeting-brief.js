@@ -113,7 +113,7 @@ export class PreMeetingBrief {
             maxResults: 20,
           }),
         ],
-        { encoding: "utf8", timeout: 15000 }
+        { encoding: "utf8", timeout: 15000, maxBuffer: 10 * 1024 * 1024 }
       );
     } catch (err) {
       this._log.warn?.(`[pre-meeting-brief] gws failed: ${err.message}`);

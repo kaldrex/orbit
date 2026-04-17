@@ -54,16 +54,20 @@ export default class CalendarConnector extends BaseConnector {
             orderBy: "startTime",
           }),
         ],
-        { encoding: "utf8" }
+        { encoding: "utf8", maxBuffer: 50 * 1024 * 1024 }
       );
-    } catch {
+    } catch (err) {
+      this.stats.errors++;
+      console.warn(`[calendar] gws call failed: ${err.code || err.message}`);
       return [];
     }
 
     let data;
     try {
       data = JSON.parse(raw);
-    } catch {
+    } catch (err) {
+      this.stats.errors++;
+      console.warn(`[calendar] JSON parse failed: ${err.message}`);
       return [];
     }
 

@@ -52,7 +52,7 @@ export default class GmailConnector extends BaseConnector {
             q: `after:${Math.floor(since.getTime() / 1000)}`,
           }),
         ],
-        { encoding: "utf8" }
+        { encoding: "utf8", maxBuffer: 50 * 1024 * 1024 }
       );
     } catch {
       return [];
@@ -89,7 +89,7 @@ export default class GmailConnector extends BaseConnector {
               metadataHeaders: ["From", "To", "Cc", "Subject", "Date"],
             }),
           ],
-          { encoding: "utf8" }
+          { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 }
         );
       } catch {
         this.stats.filtered++;
