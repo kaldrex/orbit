@@ -98,14 +98,19 @@ async function computeM1() {
 }
 
 async function computeM2() {
+  // Strict: ghost's first name equals self's first name, and the first name
+  // is at least 4 characters (avoids flagging a real person named "San"
+  // against self="Sanchay"). Full-name substring matches are delegated to
+  // Phase 3's LLM resolver, which has context to judge them.
   const rows = await cy(`
     MATCH (self:Person {category: "self"})
-    WITH self, toLower(self.name) AS selfName, self.userId AS uid
+    WITH self, toLower(split(self.name, " ")[0]) AS selfFirst, self.userId AS uid
+    WHERE size(selfFirst) >= 4
     MATCH (ghost:Person {userId: uid})
     WHERE ghost.id <> self.id
       AND ghost.category <> "self"
-      AND (toLower(ghost.name) CONTAINS selfName
-           OR selfName CONTAINS toLower(ghost.name))
+      AND ghost.name IS NOT NULL
+      AND toLower(split(ghost.name, " ")[0]) = selfFirst
     RETURN count(ghost) AS ghosts, collect({id: ghost.id, name: ghost.name})[..5] AS examples
   `);
   return { value: rows[0].ghosts, examples: rows[0].examples };
