@@ -119,6 +119,26 @@ export class CanonicalNameResolver {
   }
 
   resolve() {
+    // Build a uniqueness index: first-name → set of distinct first+last
+    // signatures found in the graph. Used by _shouldMerge to gate the
+    // loose rules (single-word → full, last-initial → full): those rules
+    // only fire when the short form can be unambiguously assigned to
+    // exactly one full-name candidate.
+    this._fullSigsByFirst = new Map();
+    for (const e of this._entries) {
+      const parts = stripLeading(e.name).split(/\s+/).filter(Boolean);
+      if (parts.length < 2) continue;
+      const first = parts[0].toLowerCase();
+      const last = parts[parts.length - 1].toLowerCase();
+      if (last.length < 2) continue; // skip abbreviations
+      if (/^\(.*\)$/.test(parts[parts.length - 1])) continue; // skip paren tags
+      if (!this._fullSigsByFirst.has(first)) this._fullSigsByFirst.set(first, new Set());
+      this._fullSigsByFirst.get(first).add(`${first} ${last}`);
+    }
+
+    // Phase 1: group by shared identifier (email, phone). Shared
+    // identifiers are strong evidence; name heterogeneity within the group
+    // is caught later by _classifyCertainty.
     for (const entry of this._entries) {
       let gid = null;
 
@@ -132,23 +152,6 @@ export class CanonicalNameResolver {
           gid = this._mergeGroups(gid, pGid);
         } else if (gid == null) {
           gid = pGid;
-        }
-      }
-
-      // Email-as-name bridge (e.g. "ramongberrios@gmail.com" ↔ "Ramon Berrios")
-      if (entry.email && gid == null) {
-        const localPart = entry.email.split("@")[0].replace(/[.\-_\d]/g, "");
-        if (localPart.length > 4) {
-          for (const [candidateGid, group] of this._groups) {
-            for (const candidateName of group.names.keys()) {
-              const cleanName = stripSpecials(candidateName);
-              if (sequenceMatcherRatio(localPart, cleanName) > 0.8) {
-                gid = candidateGid;
-                break;
-              }
-            }
-            if (gid != null) break;
-          }
         }
       }
 
@@ -166,7 +169,12 @@ export class CanonicalNameResolver {
       if (entry.phone) this._byPhone.set(entry.phone, gid);
     }
 
-    // Cross-group abbreviation merging — loop until converged.
+    // Phase 2: cross-group name-based bridging. Runs to convergence but
+    // ONLY fires for pair rules that are unambiguous (see _shouldMerge).
+    // The "Suhas → Suhas Sumukh" single-word and "Ramon B → Ramon Berrios"
+    // last-initial rules require the first name to have exactly one
+    // candidate full-name signature in the graph — otherwise they'd merge
+    // four different Shubhams together through a single "Shubham" bridge.
     let changed = true;
     while (changed) {
       changed = false;
@@ -207,47 +215,29 @@ export class CanonicalNameResolver {
     return keepGid;
   }
 
+  // Pair-wise rule check. Every rule that merges on name evidence alone
+  // must prove the merge is unambiguous against the whole graph — that's
+  // the uniqueness guard. A single "Shubham" with no other identifiers
+  // cannot be merged into "Shubham Jain" when the graph also contains
+  // "Shubham Dhumale", "Shubham Choudhary", etc.
   _shouldMerge(aGid, bGid) {
     const a = this._groups.get(aGid);
     const b = this._groups.get(bGid);
     for (const na of a.names.keys()) {
       for (const nb of b.names.keys()) {
-        const partsA = stripLeading(na).split(/\s+/);
-        const partsB = stripLeading(nb).split(/\s+/);
+        const partsA = stripLeading(na).split(/\s+/).filter(Boolean);
+        const partsB = stripLeading(nb).split(/\s+/).filter(Boolean);
 
-        // Skip if BOTH are single-word — too ambiguous
         if (partsA.length < 2 && partsB.length < 2) continue;
-
-        // First name must match exactly
         if (!partsA[0] || !partsB[0] || partsA[0] !== partsB[0]) continue;
-
-        // First name must be >2 chars
         if (partsA[0].length <= 2) continue;
 
         const [shorter, longer] =
           partsA.length <= partsB.length ? [partsA, partsB] : [partsB, partsA];
 
-        // "Suhas" → "Suhas Sumukh" (distinctive first name, >4 chars)
-        if (shorter.length === 1 && longer.length >= 2 && shorter[0].length > 4) {
-          return true;
-        }
-
-        // "Ramon B" → "Ramon Berrios" (last token abbreviation)
-        if (
-          shorter.length >= 2 &&
-          shorter[shorter.length - 1].length <= 2 &&
-          longer.length >= 2
-        ) {
-          const shortLast = shorter[shorter.length - 1][0];
-          const longLast = longer[longer.length - 1];
-          if (longLast && longLast.startsWith(shortLast)) {
-            return true;
-          }
-        }
-
-        // "Sanchay Thalnerkar" → "Sanchay Sachin Thalnerkar" (middle name
-        // optional). Both first and last tokens match, longer just inserts
-        // middle tokens — same person.
+        // RULE 1 (SAFE): first+last match, middle names optional.
+        // "Sanchay Thalnerkar" ↔ "Sanchay Sachin Thalnerkar". Strong signal,
+        // fires regardless of uniqueness.
         if (
           shorter.length >= 2 &&
           longer.length > shorter.length &&
@@ -258,18 +248,57 @@ export class CanonicalNameResolver {
           return true;
         }
 
-        // Exact match after leading-char strip
+        // RULE 2 (SAFE): exact match after leading-char strip (e.g.
+        // "~Vedika Kanse" ↔ "Vedika Kanse"). 2+ words required.
         const stripA = stripLeading(na);
         const stripB = stripLeading(nb);
         if (stripA === stripB && stripA.split(/\s+/).length >= 2) return true;
 
-        // Strong 2+ word similarity
+        // RULE 3 (UNIQUENESS-GATED): single-word → full-name
+        // ("Suhas" → "Suhas Sumukh"). Only fires when the first name has
+        // exactly one full-name signature in the graph, so we don't lump
+        // 4 distinct Shubhams together via a lone "Shubham".
+        if (shorter.length === 1 && longer.length >= 2 && shorter[0].length > 4) {
+          const sigs = this._fullSigsByFirst.get(shorter[0]);
+          if (sigs && sigs.size === 1) return true;
+          continue; // ambiguous — let Stage B / user review handle
+        }
+
+        // RULE 4 (UNIQUENESS-GATED): last-initial → full-last-name
+        // ("Ramon B" → "Ramon Berrios"). Only fires when exactly one full
+        // name in the graph has the given first name AND a last name
+        // starting with the provided initial.
+        if (
+          shorter.length >= 2 &&
+          shorter[shorter.length - 1].length <= 2 &&
+          longer.length >= 2
+        ) {
+          const initial = shorter[shorter.length - 1][0];
+          const longLast = longer[longer.length - 1];
+          if (longLast && longLast.startsWith(initial)) {
+            const sigs = this._fullSigsByFirst.get(shorter[0]);
+            if (sigs) {
+              let matches = 0;
+              for (const sig of sigs) {
+                const last = sig.split(" ")[1];
+                if (last && last.startsWith(initial)) matches++;
+              }
+              if (matches === 1) return true;
+            }
+            continue;
+          }
+        }
+
+        // RULE 5 (UNIQUENESS-GATED): high-similarity 2+-word names.
+        // Only when both full names are 2+ words AND ratio > 0.88 AND the
+        // shared first name has exactly one full-name signature.
         if (
           stripA.split(/\s+/).length >= 2 &&
           stripB.split(/\s+/).length >= 2 &&
           sequenceMatcherRatio(stripA, stripB) > 0.88
         ) {
-          return true;
+          const sigs = this._fullSigsByFirst.get(partsA[0]);
+          if (sigs && sigs.size === 1) return true;
         }
       }
     }

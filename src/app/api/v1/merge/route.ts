@@ -228,24 +228,29 @@ export async function POST(request: NextRequest) {
       throw err;
     }
 
-    // 5. Audit log in Supabase.
+    // 5. Audit log in Supabase via the record_merge_audit RPC. The function
+    //    is SECURITY DEFINER so it works over the anon client (no service
+    //    key needed) — the server has already authenticated the user above,
+    //    so passing the user_id through is safe.
     try {
-      const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-      const serviceKey =
-        process.env.SUPABASE_SERVICE_ROLE_KEY ||
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-      const supabase = createClient(serviceUrl, serviceKey);
-      await supabase.from("merge_audit").insert({
-        user_id: userId,
-        canonical_id: body.canonical_id,
-        merged_ids: body.merge_ids,
-        reasoning: body.reasoning ?? null,
-        confidence: body.confidence ?? null,
-        source: body.source,
-        evidence: body.evidence ?? null,
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "").trim()
+      );
+      const { error: rpcError } = await supabase.rpc("record_merge_audit", {
+        p_user_id: userId,
+        p_canonical_id: body.canonical_id,
+        p_merged_ids: body.merge_ids,
+        p_reasoning: body.reasoning ?? null,
+        p_confidence: body.confidence ?? null,
+        p_source: body.source,
+        p_evidence: body.evidence ?? null,
       });
+      if (rpcError) {
+        console.warn("[merge] audit rpc error:", rpcError.message);
+      }
     } catch (err) {
-      // Audit failure should not roll back the merge — log and continue.
+      // Audit failure should never roll back a merge — surface and continue.
       console.warn("[merge] audit write failed:", err);
     }
 
