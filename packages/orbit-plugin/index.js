@@ -8,6 +8,8 @@
 // async setup for connectors.
 
 import { createRequire } from "node:module";
+import { readdirSync, existsSync } from "node:fs";
+import { join } from "node:path";
 import { IdentityCache } from "./lib/identity-cache.js";
 import { SignalBuffer } from "./lib/signal-buffer.js";
 import { ConnectorRegistry } from "./lib/connector-registry.js";
@@ -20,12 +22,38 @@ const CAPABILITY_REPORT_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 
 const require = createRequire(import.meta.url);
 
-let definePluginEntry;
-try {
-  ({ t: definePluginEntry } = require("/usr/lib/node_modules/openclaw/dist/plugin-entry-CcWmObwf.js"));
-} catch {
-  ({ t: definePluginEntry } = require("/opt/homebrew/lib/node_modules/openclaw/dist/plugin-entry-CcWmObwf.js"));
+// OpenClaw's bundled plugin-entry file has a version-dependent hash
+// (e.g. plugin-entry-CcWmObwf.js, plugin-entry-BFdKnvae.js). Auto-discover
+// it across the usual install locations so the plugin works across versions.
+function loadDefinePluginEntry() {
+  const candidates = [
+    "/usr/lib/node_modules/openclaw/dist",               // npm global on Linux
+    "/opt/homebrew/lib/node_modules/openclaw/dist",      // Homebrew on macOS arm64
+    "/usr/local/lib/node_modules/openclaw/dist",         // Homebrew on macOS x86 / plain npm
+  ];
+  for (const dir of candidates) {
+    if (!existsSync(dir)) continue;
+    let entry;
+    try {
+      entry = readdirSync(dir).find((f) => /^plugin-entry-[\w-]+\.js$/.test(f));
+    } catch {
+      continue;
+    }
+    if (!entry) continue;
+    try {
+      const mod = require(join(dir, entry));
+      // Both `definePluginEntry` and the minified `t` export exist depending on build
+      return mod.definePluginEntry || mod.t || mod.default;
+    } catch {
+      continue;
+    }
+  }
+  throw new Error(
+    "OpenClaw plugin-entry module not found. Tried: " + candidates.join(", ")
+  );
 }
+
+const definePluginEntry = loadDefinePluginEntry();
 
 // Allowed categories — reject anything outside this list
 const VALID_CATEGORIES = new Set([
