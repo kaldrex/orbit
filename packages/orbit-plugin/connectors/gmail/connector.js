@@ -6,7 +6,13 @@
 
 import { execFileSync } from "node:child_process";
 import { BaseConnector } from "../base-connector.js";
-import { isNewsletter, parseEmailAddress } from "./rules.js";
+import {
+  buildEmailDetail,
+  extractMessageBody,
+  isAutomatedContent,
+  isHumanContact,
+  parseEmailAddress,
+} from "./rules.js";
 
 const SELF_EMAILS = new Set([
   "sanchaythalnerkar@gmail.com",
@@ -89,8 +95,7 @@ export default class GmailConnector extends BaseConnector {
             JSON.stringify({
               userId: "me",
               id: messageId,
-              format: "metadata",
-              metadataHeaders: ["From", "To", "Cc", "Subject", "Date"],
+              format: "full",
             }),
           ],
           { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 }
@@ -110,6 +115,8 @@ export default class GmailConnector extends BaseConnector {
 
       const headers = this._extractHeaders(meta);
       const labels = meta.labelIds || [];
+      const snippet = meta.snippet || "";
+      const { text } = extractMessageBody(meta.payload || meta);
 
       const from = parseEmailAddress(headers.from || "");
       const to = (headers.to || "")
@@ -120,8 +127,15 @@ export default class GmailConnector extends BaseConnector {
         .map((r) => parseEmailAddress(r.trim()))
         .filter((r) => r.email);
 
-      // Filter newsletters
-      if (isNewsletter(from.email, labels, from.name)) {
+      // Filter newsletters / operational senders
+      if (!isHumanContact(from.email, labels, from.name)) {
+        this.stats.filtered++;
+        continue;
+      }
+
+      // Filter operational/system threads even if the sender address looks
+      // human enough to survive the address-based filter.
+      if (isAutomatedContent(headers.subject || "", snippet, text)) {
         this.stats.filtered++;
         continue;
       }
@@ -133,12 +147,18 @@ export default class GmailConnector extends BaseConnector {
       if (isSelfSent) {
         // Self-sent: recipients are the contacts
         contacts = [...to, ...cc].filter(
-          (r) => r.email && !SELF_EMAILS.has(r.email.toLowerCase())
+          (r) =>
+            r.email &&
+            !SELF_EMAILS.has(r.email.toLowerCase()) &&
+            isHumanContact(r.email, labels, r.name)
         );
       } else {
         // Incoming: sender is the contact
         contacts = [from].filter(
-          (r) => r.email && !SELF_EMAILS.has(r.email.toLowerCase())
+          (r) =>
+            r.email &&
+            !SELF_EMAILS.has(r.email.toLowerCase()) &&
+            isHumanContact(r.email, labels, r.name)
         );
       }
 
@@ -156,7 +176,11 @@ export default class GmailConnector extends BaseConnector {
 
       const timestamp =
         headers.date ? new Date(headers.date).toISOString() : new Date().toISOString();
-      const subject = headers.subject || undefined;
+      const detail = buildEmailDetail({
+        subject: headers.subject || "",
+        snippet,
+        bodyText: text,
+      });
 
       // Emit one signal per contact — thread the email through so the server
       // can resolve to the canonical Person by identifier, not by name.
@@ -171,7 +195,7 @@ export default class GmailConnector extends BaseConnector {
           contactEmail: contact.email || undefined,
           channel: "email",
           timestamp,
-          detail: subject,
+          detail,
         });
       }
     }

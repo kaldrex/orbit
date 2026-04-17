@@ -10,6 +10,7 @@
     "SKILL.md",
     "lib/",
     "connectors/",
+    "scripts/",
     "README.md"
   ],
   "openclaw": {
