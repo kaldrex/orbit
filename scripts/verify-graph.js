@@ -117,17 +117,60 @@ async function computeM2() {
 }
 
 async function computeM3() {
-  // Fuzzy name clusters: same first-name (>2 chars), >=2 nodes, same userId.
-  // Excludes clusters already marked resolved via merge_audit (future Phase 3).
+  // M3 = "unresolved identity clusters needing review".
+  //
+  // Counts shared-email clusters where ≥2 members have DISTINCT full last
+  // names (length ≥ 3, not a paren tag, not a single-letter abbrev). Those
+  // are the wrong-attribution cases (Eric Guo + Eric Bernstein + Eric Gao
+  // on eric@anysphere.co; Manish Chaturvedi + Manish Patil + Manish Reddy
+  // on manish@flexprice.io) that Stage A correctly refuses to auto-merge
+  // and Stage B / user corrections must resolve.
+  //
+  // Cheap first-name collision buckets (4 different Shubhams with 4
+  // different surnames) are NOT counted — those are real different people
+  // sharing a first name, nothing to resolve.
   const rows = await cy(`
     MATCH (p:Person)
-    WHERE p.name IS NOT NULL AND p.category <> "self"
-    WITH p.userId AS uid, toLower(split(trim(p.name), " ")[0]) AS fname,
-         collect({id: p.id, name: p.name, email: p.email}) AS persons
-    WHERE size(fname) > 2 AND size(persons) > 1
-    RETURN count(*) AS clusters,
-           collect({fname: fname, size: size(persons), persons: persons})[..5] AS examples
-  `);
+    WHERE p.email IS NOT NULL AND trim(p.email) <> "" AND p.category <> "self"
+    WITH toLower(trim(p.email)) AS email,
+         collect({id: p.id, name: p.name}) AS members
+    WHERE size(members) > 1
+    WITH email, members,
+         [m IN members
+           WHERE size(split(trim(m.name), " ")) >= 2
+             AND size(last(split(trim(m.name), " "))) >= 3
+             AND NOT last(split(trim(m.name), " ")) STARTS WITH "("
+             AND NOT last(split(trim(m.name), " ")) ENDS WITH ")"
+           | toLower(last(split(trim(m.name), " ")))
+         ] AS fullLasts
+    WITH email, members, fullLasts, [x IN fullLasts WHERE x IS NOT NULL] AS cleaned
+    WITH email, members, apoc.coll.toSet(cleaned) AS distinctLasts
+    WHERE size(distinctLasts) >= 2
+    RETURN count(email) AS clusters,
+           collect({email: email, distinctLasts: distinctLasts, members: members})[..5] AS examples
+  `).catch(async () => {
+    // Fall back without apoc.coll.toSet (plain Neo4j)
+    return cy(`
+      MATCH (p:Person)
+      WHERE p.email IS NOT NULL AND trim(p.email) <> "" AND p.category <> "self"
+      WITH toLower(trim(p.email)) AS email,
+           collect({id: p.id, name: p.name}) AS members
+      WHERE size(members) > 1
+      WITH email, members,
+           [m IN members
+             WHERE size(split(trim(m.name), " ")) >= 2
+               AND size(last(split(trim(m.name), " "))) >= 3
+               AND NOT last(split(trim(m.name), " ")) STARTS WITH "("
+               AND NOT last(split(trim(m.name), " ")) ENDS WITH ")"
+             | toLower(last(split(trim(m.name), " ")))
+           ] AS fullLasts
+      UNWIND fullLasts AS x
+      WITH email, members, collect(DISTINCT x) AS distinctLasts
+      WHERE size(distinctLasts) >= 2
+      RETURN count(email) AS clusters,
+             collect({email: email, distinctLasts: distinctLasts, members: members})[..5] AS examples
+    `);
+  });
   return { value: rows[0].clusters, examples: rows[0].examples };
 }
 
