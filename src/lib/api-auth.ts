@@ -64,6 +64,8 @@ export async function validateApiKey(authHeader: string | null, clientIp?: strin
 export async function getAgentOrSessionAuth(request: Request): Promise<{
   userId: string;
   selfNodeId: string | null;
+  displayName?: string;
+  authEmail?: string;
 } | null> {
   // Try API key first
   const authHeader = request.headers.get("authorization");
@@ -77,6 +79,8 @@ export async function getAgentOrSessionAuth(request: Request): Promise<{
     return {
       userId: apiKeyUserId,
       selfNodeId: profile?.self_node_id ?? null,
+      displayName: profile?.display_name ?? undefined,
+      authEmail: profile?.email ?? undefined,
     };
   }
 
@@ -84,5 +88,10 @@ export async function getAgentOrSessionAuth(request: Request): Promise<{
   const { getAuthContext } = await import("@/lib/auth");
   const auth = await getAuthContext();
   if (!auth) return null;
-  return { userId: auth.userId, selfNodeId: auth.selfNodeId };
+  return {
+    userId: auth.userId,
+    selfNodeId: auth.selfNodeId,
+    displayName: auth.displayName,
+    authEmail: auth.authEmail ?? undefined,
+  };
 }

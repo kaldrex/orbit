@@ -141,8 +141,11 @@ export default class CalendarConnector extends BaseConnector {
         detail = `${detail || "Recurring"} (${ev._cadence}, ${ev._occurrences} occurrences)`;
       }
 
+      const contactEmail = this._extractContactEmail(ev) || undefined;
+
       signals.push({
         contactName,
+        contactEmail,
         channel: "calendar",
         timestamp: startTime || new Date().toISOString(),
         detail,
@@ -187,5 +190,18 @@ export default class CalendarConnector extends BaseConnector {
     }
 
     return null;
+  }
+
+  /**
+   * Extract the contact email from the attendee list — prefer the non-self
+   * attendee(s). Used to let the server match by email identifier before
+   * falling back to fuzzy name matching.
+   */
+  _extractContactEmail(ev) {
+    const attendees = (ev.attendees || []).filter(
+      (a) => !a.self && !a.resource && a.email
+    );
+    if (attendees.length === 0) return null;
+    return attendees[0].email || null;
   }
 }

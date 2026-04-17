@@ -277,12 +277,28 @@ export class ConnectorRegistry {
 
   /**
    * Translate a connector signal to the SignalBuffer.add() format.
-   * Connectors return: { contactName, channel, timestamp, detail, isGroup }
+   * Connectors return: { contactName, contactEmail?, contactPhone?, channel,
+   *                      timestamp, detail, isGroup }
    * SignalBuffer expects: { participants, channel, summary, timestamp }
+   *
+   * If the connector supplies an identifier (email/phone), we emit the
+   * structured participant shape so the server can match by identifier
+   * before falling back to name. This is what stops the bleed: two Gmail
+   * signals with the same email land on the same Person node regardless of
+   * whether the From header used "Eric" or "Eric Bernstein".
    */
   _pushSignal(signal) {
+    const participant =
+      signal.contactEmail || signal.contactPhone
+        ? {
+            name: signal.contactName,
+            email: signal.contactEmail || undefined,
+            phone: signal.contactPhone || undefined,
+          }
+        : signal.contactName;
+
     this._signalBuffer.add({
-      participants: [signal.contactName],
+      participants: [participant],
       channel: signal.channel,
       summary: signal.detail || undefined,
       timestamp: signal.timestamp || new Date().toISOString(),

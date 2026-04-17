@@ -49,8 +49,20 @@ export function isJunkParticipant(name: string): boolean {
   return false;
 }
 
+type ParticipantLike = string | { name?: string; email?: string; phone?: string };
+
+function nameOf(p: ParticipantLike): string {
+  if (typeof p === "string") return p;
+  return p?.name ?? "";
+}
+
+function emailOf(p: ParticipantLike): string | undefined {
+  if (typeof p === "string") return undefined;
+  return p?.email;
+}
+
 export function filterIngestPayload<
-  I extends { participants?: string[] },
+  I extends { participants?: ParticipantLike[] },
   P extends { name?: string; email?: string },
 >(
   interactions: I[],
@@ -83,18 +95,29 @@ export function filterIngestPayload<
     return true;
   });
 
-  // Filter interaction participants and remove empty interactions
+  // Filter interaction participants and remove empty interactions.
+  // Participants can be strings (legacy) or { name, email?, phone? } objects.
   const cleanInteractions: I[] = interactions
     .map((interaction) => {
       if (!interaction.participants) return interaction;
 
-      const cleanParticipants = interaction.participants.filter((name) => {
-        if (isBotName(name)) {
+      const cleanParticipants = interaction.participants.filter((p) => {
+        const n = nameOf(p);
+        if (!n) {
+          stats.junkParticipants++;
+          return false;
+        }
+        if (isBotName(n)) {
           stats.bots++;
           return false;
         }
-        if (isJunkParticipant(name)) {
+        if (isJunkParticipant(n)) {
           stats.junkParticipants++;
+          return false;
+        }
+        const e = emailOf(p);
+        if (e && isNewsletterEmail(e)) {
+          stats.newsletters++;
           return false;
         }
         return true;

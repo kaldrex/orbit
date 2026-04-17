@@ -56,8 +56,10 @@ export async function POST() {
   await writeNeo4j(
     user.id,
     `MERGE (p:Person {id: $selfNodeId, userId: $userId})
-     ON CREATE SET p.name = $displayName, p.category = "self", p.relationship_score = 10`,
-    { selfNodeId, displayName }
+     ON CREATE SET p.name = $displayName, p.category = "self", p.relationship_score = 10,
+                   p.email = $email
+     ON MATCH SET p.email = COALESCE(p.email, $email)`,
+    { selfNodeId, displayName, email: user.email ?? null }
   );
 
   // Update profile with self_node_id

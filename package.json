@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "verify": "node scripts/verify-graph.js"
+    "verify": "node scripts/verify-graph.js",
+    "verify:replay": "node scripts/replay-bleed.js"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.0",

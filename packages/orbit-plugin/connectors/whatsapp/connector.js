@@ -193,12 +193,26 @@ export default class WhatsAppConnector extends BaseConnector {
       return null;
     }
 
+    // Extract phone from the JID ("15555551212@s.whatsapp.net" → "15555551212").
+    // Group participant JIDs take the form "15551234@lid" or similar; we take
+    // the leading digits. LID identifiers that resolve via identity-cache will
+    // already have been mapped to a phone upstream; others we keep raw so the
+    // server can at least match exact JID → phone on next tick.
+    const jidToPhone = (jid) => {
+      if (!jid || typeof jid !== "string") return undefined;
+      const head = jid.split("@")[0] || "";
+      const digits = head.replace(/\D/g, "");
+      return digits.length >= 7 ? digits : undefined;
+    };
+    const contactPhone = jidToPhone(resolveTarget);
+
     // Truncate detail for summary
     const detail = text.length > 100 ? text.slice(0, 97) + "..." : text;
 
     this.stats.processed++;
     return {
       contactName,
+      contactPhone,
       channel: "whatsapp",
       timestamp,
       detail: detail || undefined,

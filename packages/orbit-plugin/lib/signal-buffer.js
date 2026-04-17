@@ -48,7 +48,9 @@ export class SignalBuffer {
    * within a 5-minute window.
    *
    * @param {Object} signal
-   * @param {string[]} signal.participants — names of people involved
+   * @param {(string | {name: string, email?: string, phone?: string})[]} signal.participants
+   *   — names of people involved; structured form carries email/phone so the
+   *   server can match on identifier before name.
    * @param {string} signal.channel — whatsapp, email, slack, calendar, linear
    * @param {string} [signal.summary] — what was discussed
    * @param {string} [signal.timestamp] — ISO timestamp (defaults to now)
@@ -59,25 +61,28 @@ export class SignalBuffer {
 
     const ts = signal.timestamp || new Date().toISOString();
 
-    // Dedup by participant+channel+day-bucket. Using the signal's own
-    // timestamp (not wall-clock) means a bootstrap that dumps years of
+    // Dedup by participant NAME + channel + day-bucket. Using the signal's
+    // own timestamp (not wall-clock) means a bootstrap that dumps years of
     // history doesn't collapse into one signal per contact — we still
     // preserve one interaction per day per channel.
     const tsMs = new Date(ts).getTime() || Date.now();
     const dayBucket = Math.floor(tsMs / 86400_000);
 
+    const nameOf = (p) => (typeof p === "string" ? p : p?.name || "");
+
     const dominated = signal.participants.every((p) => {
-      const key = `${p}|${signal.channel}|${dayBucket}`;
+      const key = `${nameOf(p)}|${signal.channel}|${dayBucket}`;
       return this._seen.has(key);
     });
 
     if (dominated) return;
 
     for (const p of signal.participants) {
-      this._seen.set(`${p}|${signal.channel}|${dayBucket}`, tsMs);
+      this._seen.set(`${nameOf(p)}|${signal.channel}|${dayBucket}`, tsMs);
     }
 
-    // Queue the interaction
+    // Queue the interaction — preserve the structured participant shape so
+    // the server sees email/phone when the connector provided them.
     this._buffer.push({
       participants: signal.participants,
       channel: signal.channel,
@@ -210,9 +215,12 @@ export class SignalBuffer {
           item._retries++;
           retryable.push(item);
         } else {
+          const names = item.participants
+            .map((p) => (typeof p === "string" ? p : p?.name || "?"))
+            .join(", ");
           this._log.warn?.(
             `[signal-buffer] dropping interaction after ${MAX_RETRIES} retries: ` +
-              `${item.participants.join(", ")} on ${item.channel}`
+              `${names} on ${item.channel}`
           );
         }
       }
