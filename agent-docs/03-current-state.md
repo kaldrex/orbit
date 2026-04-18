@@ -49,6 +49,7 @@ UI scaffolding still lives under `src/app/dashboard/`, `src/app/onboarding/`, `s
 | Layer | State |
 |---|---|
 | Supabase `raw_events` | **33,105 rows**, all `source = 'whatsapp'`, from Sanchay's `wacli.db`. Unique on `(user_id, source, source_event_id)`. Re-import produces 0 new rows. |
+| Supabase (other public tables) | `api_keys` (2 rows, live — agent auth) · `profiles` (1 row, `self_node_id` nulled post Neo4j-wipe). `merge_audit` (603 rows, dead) and `connectors` (0 rows, dead) were **dropped** in migration `scripts/migrations/001-supabase-clean-slate.sql`. See [02-architecture.md](./02-architecture.md) §Supabase Postgres for the full table list. |
 | Supabase `auth.users` | One user — `sanchaythalnerkar@gmail.com` (id `dbb398c2-1eff-4eee-ae10-bad13be5fda7`). Password reset this session; stored in `.env.local` as `ORBIT_USER_EMAIL` / `ORBIT_USER_PASSWORD`. |
 | Neo4j Aura | **Empty.** 0 nodes, 0 edges. The 1,711-person / 366k-edge pre-pivot graph was wiped — it was never touched by Track 1 or 2, all fossil from an older `/api/v1/ingest` path. Schema (2 built-in LOOKUP indexes) preserved. |
 | Vercel prod (`orbit-mu-roan.vercel.app`) | **Still running pre-prune code.** Sixteen old routes still live there. Untouched until you push the clean `main`. |

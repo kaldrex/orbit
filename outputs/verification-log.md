@@ -6,6 +6,23 @@ Append-only ledger. Every build claim lands here with an evidence artifact and a
 
 ---
 
+## 2026-04-18 — Supabase residue cleanup (migration 001)
+
+**Claim:** "Only `raw_events`, `api_keys`, `profiles` remain in Supabase `public` schema. No pre-pivot debt anywhere in the DB."
+
+**Investigation:** Probed live DB via `psql $SUPABASE_DB_URL`. Found three undocumented orphans from the deleted pipeline: `merge_audit` (603 rows, history from `/api/v1/merge`), `connectors` (0 rows, schema from `/api/connectors/*`), and `profiles.self_node_id` pointing at a wiped Neo4j node.
+
+**Change:** Applied [scripts/migrations/001-supabase-clean-slate.sql](../scripts/migrations/001-supabase-clean-slate.sql) — `DROP TABLE merge_audit`, `DROP TABLE connectors`, `UPDATE profiles SET self_node_id = NULL`.
+
+**Evidence:**
+- `psql -c "\dt public.*"` → 3 tables: `api_keys`, `profiles`, `raw_events`.
+- `psql -c "SELECT self_node_id FROM profiles"` → null.
+- Migration is idempotent: re-run reports `DROP TABLE` no-ops + `UPDATE 0`.
+
+**Rollback:** The two tables are gone + `self_node_id` nulled. No business data lost (`merge_audit` was dead history; `connectors` was empty). If something later needs those tables, re-create via forward migration.
+
+---
+
 ## 2026-04-18 — Clean-slate prune
 
 **Claim:** "Pre-pivot backend and both OpenClaw plugin packages are deleted; Neo4j is empty; claw plugin service stopped."
