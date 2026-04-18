@@ -101,6 +101,18 @@ Three external services. Each has a gotcha worth knowing before you open a conne
 
 ### Supabase Postgres
 
+**Public tables (post clean-slate, 3 total):**
+
+| Table | Rows | Purpose |
+|---|---|---|
+| `raw_events` | 33,105 | The ledger. Idempotent on `(user_id, source, source_event_id)`. RLS on. |
+| `api_keys` | 2 | Agent API keys (hashed). Read by `getAgentOrSessionAuth` in [src/lib/api-auth.ts](../src/lib/api-auth.ts). |
+| `profiles` | 1 | User display data (`display_name`, `avatar_url`). `self_node_id` column exists but is nulled after the Neo4j wipe; Track 3.2 will repopulate it when the projection runs. |
+
+Plus `public.upsert_raw_events` RPC (the idempotent batch upsert). Plus the standard Supabase `auth.*` schema (managed; don't touch).
+
+Track 3 adds `interactions` (view or materialized view) and an `observations` table. No other tables should exist. If a fresh probe shows more, they're debt — investigate and cut.
+
 - **RLS is on for `raw_events`.** Policies allow `auth.uid() = user_id` for SELECT + INSERT. A client-side query using the anon key returns empty silently if the user isn't authenticated. The ledger route in [src/app/api/v1/raw_events/route.ts](../src/app/api/v1/raw_events/route.ts) bypasses this by calling the `upsert_raw_events` RPC with the server-resolved `userId` after `getAgentOrSessionAuth`.
 - **Two connection paths.** Scripts use `SUPABASE_DB_URL` (pooler, direct `psql`/`pg`). Routes use the Supabase JS client with `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Pick based on context.
 
