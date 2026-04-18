@@ -35,9 +35,11 @@ describe("importGroupParticipants", () => {
 
   it("does not emit for groups with <2 members", async () => {
     const emptyDb = new Database(":memory:");
-    emptyDb.prepare("CREATE TABLE group_participants (group_jid TEXT, member_jid TEXT)").run();
     emptyDb
-      .prepare("INSERT INTO group_participants VALUES ('g1@g.us','alice@wa')")
+      .prepare("CREATE TABLE group_participants (group_jid TEXT, user_jid TEXT, role TEXT, updated_at INTEGER)")
+      .run();
+    emptyDb
+      .prepare("INSERT INTO group_participants VALUES ('g1@g.us','alice@wa','member',0)")
       .run();
     const fake = makeFakeNeo4j();
     const result = await importGroupParticipants({

@@ -18,7 +18,7 @@ describe("wacliToRawEvents", () => {
       expect(typeof r.source_event_id).toBe("string");
       expect(typeof r.thread_id).toBe("string");
       expect(new Date(r.occurred_at).toString()).not.toBe("Invalid Date");
-      expect(["in", "out", null]).toContain(r.direction);
+      expect(["in", "out"]).toContain(r.direction);
       expect(r.connector_version).toBe("wacli-import-0.1");
     }
   });
@@ -26,8 +26,17 @@ describe("wacliToRawEvents", () => {
   it("emits rows that pass the shared zod batch schema", () => {
     const db = new Database(FIXTURE, { readonly: true });
     const rows = wacliToRawEvents(db);
-    // The schema batch-validates — any single bad row would throw.
     expect(() => rawEventsBatchSchema.parse(rows)).not.toThrow();
+  });
+
+  it("source_event_id is compound chat_jid|msg_id for uniqueness across chats", () => {
+    const db = new Database(FIXTURE, { readonly: true });
+    const rows = wacliToRawEvents(db);
+    for (const r of rows) {
+      expect(r.source_event_id).toMatch(/^.+\|.+$/);
+    }
+    const ids = new Set(rows.map((r) => r.source_event_id));
+    expect(ids.size).toBe(rows.length);
   });
 
   it("skips already-seen source_event_ids when a seen set is passed", () => {
@@ -46,5 +55,15 @@ describe("wacliToRawEvents", () => {
     for (const r of withPhone) {
       expect(r.participant_phones[0]).toMatch(/^\+\d+$/);
     }
+  });
+
+  it("direction maps from from_me (1→out, 0→in)", () => {
+    const db = new Database(FIXTURE, { readonly: true });
+    const rows = wacliToRawEvents(db);
+    const outs = rows.filter((r) => r.direction === "out");
+    const ins = rows.filter((r) => r.direction === "in");
+    expect(outs.length + ins.length).toBe(rows.length);
+    expect(outs.length).toBeGreaterThan(0);
+    expect(ins.length).toBeGreaterThan(0);
   });
 });
