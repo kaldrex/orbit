@@ -10,6 +10,7 @@
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, delimiter } from "node:path";
+import { resolveGwsPath } from "./gws-path.js";
 
 const CONFIG_PATH = join(homedir(), ".openclaw", "openclaw.json");
 
@@ -80,8 +81,11 @@ export function introspectCapabilities() {
     channels.discord?.enabled !== false && Boolean(channels.discord?.botToken);
   const imessageOn = Boolean(channels.imessage?.enabled);
 
-  // Data sources on disk / CLI
-  const gwsCli = cliExists("gws");
+  // Data sources on disk / CLI. For gws, use the shared resolver so the
+  // capability report and the Gmail connector's availability check always
+  // agree — even under the stripped PATH the gateway subprocess inherits.
+  const gwsPath = resolveGwsPath();
+  const gwsCli = gwsPath !== null;
   const wacliCli = cliExists("wacli");
   const linearApiKey =
     Boolean(process.env.LINEAR_API_KEY) || Boolean(process.env.LINEAR_API_TOKEN);
@@ -105,6 +109,7 @@ export function introspectCapabilities() {
     },
     tools: {
       gws: gwsCli,
+      gwsPath,
       wacli: wacliCli,
     },
     reportedAt: new Date().toISOString(),

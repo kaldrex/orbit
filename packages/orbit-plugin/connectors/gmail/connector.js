@@ -6,6 +6,7 @@
 
 import { execFileSync } from "node:child_process";
 import { BaseConnector } from "../base-connector.js";
+import { resolveGwsPath } from "../../lib/gws-path.js";
 import {
   buildEmailDetail,
   extractMessageBody,
@@ -27,14 +28,19 @@ export default class GmailConnector extends BaseConnector {
 
   /**
    * Check if the gws CLI is installed.
+   *
+   * Uses resolveGwsPath so we find gws even when the gateway subprocess
+   * inherits a minimal PATH that lacks /usr/local/bin etc.
    */
   isAvailable() {
-    try {
-      execFileSync("which", ["gws"], { encoding: "utf8" });
-      return true;
-    } catch {
-      return false;
-    }
+    this._gwsPath = this._gwsPath ?? resolveGwsPath();
+    return this._gwsPath !== null;
+  }
+
+  _gws() {
+    if (!this._gwsPath) this._gwsPath = resolveGwsPath();
+    if (!this._gwsPath) throw new Error("gws not found on disk or PATH");
+    return this._gwsPath;
   }
 
   /**
@@ -60,7 +66,7 @@ export default class GmailConnector extends BaseConnector {
         params.q = `after:${y}/${m}/${d}`;
       }
       listRaw = execFileSync(
-        "gws",
+        this._gws(),
         ["gmail", "users", "messages", "list", "--params", JSON.stringify(params)],
         { encoding: "utf8", maxBuffer: 50 * 1024 * 1024 }
       );
@@ -88,7 +94,7 @@ export default class GmailConnector extends BaseConnector {
       let metaRaw;
       try {
         metaRaw = execFileSync(
-          "gws",
+          this._gws(),
           [
             "gmail", "users", "messages", "get",
             "--params",
