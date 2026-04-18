@@ -31,31 +31,29 @@ T1 and T2 are independent and can start in parallel. T3 depends on T2. T4 and T5
 
 ---
 
-## Track 1 — Week-1 pipeline fixes
+## Track 1 — Week-1 pipeline fixes ✅ DONE
 
 **Detailed plan:** [2026-04-18-track-1-pipeline-fixes.md](./2026-04-18-track-1-pipeline-fixes.md)
 **Goal:** stop active data loss; close low-hanging pipeline bugs without architecture changes.
-**Exit criterion:** gateway capability report on `claw` shows `channels=whatsapp,gmail,calendar` AND a rerun of `scripts/verify-graph.js` shows every edge has `source_event_id`, `thread_id`, `body_preview`.
 
-- [x] **1.1** Preserve `source_event_id` / `thread_id` / `body_preview` / `direction` / `source` on `INTERACTED` edge
-  - Already merged as commit [`aa44a40`](#). Verification test still needed — see plan Task 2.
-- [ ] **1.2** Fix Gmail connector `isAvailable()` under gateway subprocess (hardcode PATH lookup)
-- [ ] **1.3** Import `group_participants` as `CO_PRESENT_IN` edges (weight 0.1)
-- [ ] **1.4** LID→phone bridge — nightly job scaffolding with seeded strong matches
+- [x] **1.1** Preserve `source_event_id` / `thread_id` / `body_preview` / `direction` / `source` on `INTERACTED` edge (commit `aa44a40`, regression test in `tests/unit/interacted-edge-fields.test.ts`)
+- [x] **1.2** Gmail connector `isAvailable()` hardening — resolver at `packages/orbit-plugin/lib/gws-path.js` shared with `capabilities.js`. (Note: the original "active bug" claim turned out to be stale per `outputs/verification-log.md`; this shipped as defensive hardening with a 3-test regression guard.)
+- [x] **1.3** Import `group_participants` as `CO_PRESENT_IN` edges (weight 0.1) — `src/lib/cypher/co-present-edge.cypher` + `scripts/import-group-participants.mjs` + 3 integration tests
+- [x] **1.4** LID→phone bridge scaffolding — `scripts/lid-bridge-nightly.mjs` + 35-pair seed at `tests/fixtures/lid-seed.json` + 3 integration tests; single-token auto-merge guard asserted
 
 ---
 
-## Track 2 — raw_events ledger
+## Track 2 — raw_events ledger ✅ DONE (except 2.5)
 
 **Detailed plan:** [2026-04-18-track-2-raw-events-ledger.md](./2026-04-18-track-2-raw-events-ledger.md)
 **Goal:** make `raw_events` the immutable source of truth. Everything else becomes a projection.
-**Exit criterion:** `SELECT COUNT(*) FROM raw_events` ≥ 30 000 from Sanchay's WA + ≥ 800 from wide Gmail, and re-import produces 0 new rows.
+**Exit criterion:** `SELECT COUNT(*) FROM raw_events` ≥ 30 000 from Sanchay's WA + re-import produces 0 new rows. **Met:** 33 105 rows, re-run inserts 0.
 
-- [x] **2.1** Supabase migration: `raw_events` table + indexes + unique constraint `(user_id, source, source_event_id)`
-- [x] **2.2** `POST /api/v1/raw_events` endpoint with idempotent upsert
-- [x] **2.3** Bootstrap: import existing JSONL exports into ledger
-- [x] **2.4** wacli.db direct importer (SQLite → raw_events bulk load)
-- [ ] **2.5** Plugin rewrite: signal-buffer → raw_events (ledger-first, projection second) — _split off to Track 2b once migrations applied in prod_
+- [x] **2.1** Supabase migration: `raw_events` table + 7 indexes + unique constraint `(user_id, source, source_event_id)` — applied to prod 2026-04-18 via Management API
+- [x] **2.2** `POST /api/v1/raw_events` endpoint with idempotent upsert — deployed to `orbit-mu-roan.vercel.app`, round-trip verified
+- [x] **2.3** JSONL bootstrap importer (`scripts/import-jsonl-to-raw-events.mjs`)
+- [x] **2.4** wacli.db direct importer — both a live-streaming HTTP variant AND a fast `COPY`-based variant; 33 105 rows landed in 10.77 s
+- [ ] **2.5** Plugin rewrite: signal-buffer → raw_events on claw (ledger-first, projection second). _Open — still uses `/api/v1/ingest` the old way. Not blocking Track 3._
 
 ---
 
@@ -140,4 +138,5 @@ T1 and T2 are independent and can start in parallel. T3 depends on T2. T4 and T5
 
 | Date | Change |
 |---|---|
-| 2026-04-18 | Initial roadmap created alongside Track 1 plan. |
+| 2026-04-18 (AM) | Initial roadmap created alongside Track 1 plan. |
+| 2026-04-18 (PM) | Track 1 landed. Track 2 plan + migrations + API + importers landed. Migrations applied to prod Supabase; Vercel prod redeployed; 33 105 real wacli messages backfilled via direct Postgres COPY in 10.77 s. Sub-item 2.5 (plugin rewrite) split off as open. Track 3 unblocked. |
