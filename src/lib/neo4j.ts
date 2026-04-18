@@ -170,6 +170,14 @@ export interface InteractionBatchItem {
   topic: string | null;
   relationshipContext: string | null;
   sentiment: string | null;
+  // Source-level provenance (additive, additive, nullable — older rows lack these).
+  // Required to stop the ~40% field drop at ingest identified in the 2026-04-18
+  // hypothesis audit, and to make events replayable from raw_events later.
+  source: string | null;           // "whatsapp" | "gmail" | "calendar" | "slack" | "linear"
+  sourceEventId: string | null;    // Gmail message_id, WA msg_id, Calendar event id
+  threadId: string | null;         // Gmail thread_id, WA chat_jid, Slack thread_ts
+  bodyPreview: string | null;      // first ~160 chars of body; null for pure metadata events
+  direction: string | null;        // "in" | "out" (from self's perspective)
 }
 
 /**
@@ -196,7 +204,12 @@ export async function batchCreateInteractions(
          summary: ix.summary,
          topic_summary: ix.topic,
          relationship_context: ix.relationshipContext,
-         sentiment: ix.sentiment
+         sentiment: ix.sentiment,
+         source: ix.source,
+         source_event_id: ix.sourceEventId,
+         thread_id: ix.threadId,
+         body_preview: ix.bodyPreview,
+         direction: ix.direction
        }]->(b)
        SET b.last_interaction_at = datetime().epochMillis,
            b.relationship_score = CASE
