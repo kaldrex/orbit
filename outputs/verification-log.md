@@ -104,3 +104,45 @@ Full log: [outputs/verification/2026-04-18-track1/npm-test.log](./verification/2
 **Commit:** _pending — to land as a single commit or per-task commits on `claude/cool-sammet-36b821`_
 
 ---
+
+## 2026-04-18 — Track 2: raw_events ledger + idempotent endpoint + two importers
+
+**Claim:** "raw_events is now the durable append-only ledger. Server accepts idempotent upserts. wacli.db and JSONL bootstrap importers work against the committed fixtures."
+
+**Changes:**
+- [supabase/migrations/20260418_raw_events.sql](../supabase/migrations/20260418_raw_events.sql) — table with unique `(user_id, source, source_event_id)`, five indexes (time, thread, source, email GIN, phone GIN), RLS (read/insert only — no update/delete per append-only contract).
+- [supabase/migrations/20260418_upsert_raw_events_rpc.sql](../supabase/migrations/20260418_upsert_raw_events_rpc.sql) — `SECURITY DEFINER` RPC that batches upserts under the supplied user_id. Same pattern as `record_merge_audit`, callable by the server under the anon key.
+- [src/lib/raw-events-schema.ts](../src/lib/raw-events-schema.ts) — zod schema shared between API and importers. Enforces source enum, ISO-8601 timestamps, 160-char body_preview truncation, 1–500-row batches.
+- [src/app/api/v1/raw_events/route.ts](../src/app/api/v1/raw_events/route.ts) — `POST` handler. Rate-limiting/tenant-isolation via the existing `getAgentOrSessionAuth` path.
+- [scripts/import-wacli-to-raw-events.mjs](../scripts/import-wacli-to-raw-events.mjs) — `wacliToRawEvents(db, {...})` pure mapper + CLI entry that posts batches. Handles `@s.whatsapp.net` phone extraction, preserves chat name + is_group in `raw_ref`.
+- [scripts/import-jsonl-to-raw-events.mjs](../scripts/import-jsonl-to-raw-events.mjs) — streaming reader with per-line validation. Invalid lines surface with line numbers, never silently dropped.
+
+**Evidence:**
+
+```
+$ npm test
+ Test Files  9 passed (9)
+      Tests  33 passed (33)
+
+$ npx tsc --noEmit
+(no output — clean)
+```
+
+Full test log: [outputs/verification/2026-04-18-track2/npm-test.log](./verification/2026-04-18-track2/npm-test.log)
+Summary: [outputs/verification/2026-04-18-track2/summary.md](./verification/2026-04-18-track2/summary.md)
+
+**Safety (all additive):**
+- No existing tables touched.
+- No data migration — new rows only.
+- RLS is deny-by-default; new table inherits default `authenticated` access only through the new policies.
+- Endpoint is net-new; no other caller depends on it yet.
+
+**Deferred (documented, not faked):**
+- Production Supabase `supabase db push` of both migrations.
+- Live bulk import of Sanchay's 33 k wacli messages against prod; idempotency spot-check.
+
+**Rollback:**
+- Both migrations use `create table if not exists` / `create or replace function`. To undo cleanly: `drop function public.upsert_raw_events(uuid, jsonb);` then `drop table public.raw_events cascade;`. Done via a new migration file in a follow-up commit.
+- Endpoint rollback: `git revert` the route handler commit.
+
+---
