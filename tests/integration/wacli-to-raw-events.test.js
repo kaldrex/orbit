@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import Database from "better-sqlite3";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { wacliToRawEvents } from "../../scripts/import-wacli-to-raw-events.mjs";
+import { wacliToRawEvents } from "../../scripts/fast-copy-wacli-to-raw-events.mjs";
 import { rawEventsBatchSchema } from "../../src/lib/raw-events-schema";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

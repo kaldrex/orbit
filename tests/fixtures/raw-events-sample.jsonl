@@ -1,3 +1,0 @@
-{"source":"gmail","source_event_id":"gmail_abc","channel":"gmail","occurred_at":"2026-04-18T09:00:00Z","thread_id":"t1","participant_emails":["alice@example.com"]}
-{"source":"calendar","source_event_id":"cal_123","channel":"calendar","occurred_at":"2026-04-18T10:00:00Z"}
-{"source":"slack","source_event_id":"slack_xyz","channel":"slack","occurred_at":"bad-date"}
