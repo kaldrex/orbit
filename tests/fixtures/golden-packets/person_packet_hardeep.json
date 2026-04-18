@@ -1,0 +1,104 @@
+{
+  "person_id": "person_hardeep_gambhir",
+  "canonical_name": "Hardeep Gambhir",
+  "aliases": [
+    "Hardeep Residency"
+  ],
+  "identifiers": {
+    "phones_e164": [
+      "+14377754295"
+    ],
+    "emails": [
+      "hardeep@localhosthq.com"
+    ],
+    "whatsapp_jids": [
+      "14377754295@s.whatsapp.net"
+    ]
+  },
+  "channels": {
+    "whatsapp": {
+      "message_count": 12,
+      "first_at": "2026-04-14T16:30:03+00:00",
+      "last_at": "2026-04-15T17:33:54+00:00",
+      "outgoing": 7,
+      "incoming": 5,
+      "reply_ratio": 0.58,
+      "last_preview": "Sorry for the missed calls recently. Have recently moved to LA so been a bit hectic."
+    },
+    "gmail": {
+      "message_count_total": 13,
+      "message_count_direct": 12,
+      "message_count_cc_only": 1,
+      "first_at": "2025-11-06T05:58:09+00:00",
+      "last_at": "2026-04-04T18:20:47+00:00",
+      "self_outgoing_count": 0,
+      "last_subject": "UPDATED - Hardeep persona 80% pre-filled, he just fills the gaps"
+    },
+    "calendar": {
+      "past_meetings": null,
+      "next_meeting": null,
+      "_note": "Calendar not ingested at rest; requires live pull with attendee-email join"
+    }
+  },
+  "relationship": {
+    "first_touch": "2026-03-14T04:15:21+00:00",
+    "last_touch": "2026-04-15T17:33:54+00:00",
+    "days_since_last": 2,
+    "total_interactions": 24,
+    "bidirectional": true,
+    "intensity_score": 0.2,
+    "going_cold": false,
+    "trend": "rising"
+  },
+  "segment": {
+    "primary": "internal_teammate",
+    "confidence": "high",
+    "evidence": [
+      "same-domain:localhosthq.com"
+    ]
+  },
+  "context": {
+    "recent_topics": [
+      "hardeep",
+      "sanchay",
+      "event",
+      "localhost",
+      "invitation",
+      "thalnerkar",
+      "unknown",
+      "sender",
+      "lunch",
+      "india"
+    ],
+    "shared_groups": [
+      "General Channel",
+      "Adil x lAFF",
+      "Bharat <> localhost",
+      "MyVaastuPandit.com",
+      "PR x IAFF",
+      "bot testing",
+      "Hardeep Mac Mini",
+      "Team Dinner",
+      "Final Volunteers | IAFF Qutub Minar",
+      "Technical Blogs",
+      "Sanchay x Localhost",
+      "IAFF support and Volunteers",
+      "Organizing Team",
+      "On Ground Ops iaff 17th",
+      "VIP\u2019s x iaff",
+      "New Attendees signup Updates!",
+      "Press Team",
+      "MAFF Volunteer : Westend",
+      "AI x Filmmaking Hackathon",
+      "AI Video-Gen News",
+      "Proxima Mumbai"
+    ],
+    "outstanding_action_items": [
+      "Hey! Drop your update for today \u2014 what did you get done?",
+      "Can you drop your updates here?"
+    ],
+    "_note_topics": "Rule-based: top-count alphabetic tokens \u22654 chars, stopword-filtered. LLM would produce cleaner phrases.",
+    "_note_action_items": "Rule-based: regex patterns for imperatives + questions directed at Sanchay. LLM would detect follow-ups and promises more reliably.",
+    "_note_shared_groups": "Null for @s.whatsapp.net-only persons because group_participants uses @lid identities \u2014 needs LID-phone bridge before group membership is queryable."
+  }
+}
