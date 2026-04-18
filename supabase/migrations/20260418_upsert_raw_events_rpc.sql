@@ -4,6 +4,12 @@
 -- caller via validateApiKey (or session). The SECURITY DEFINER wrapper
 -- lets the route write under the anon key without needing service_role.
 -- Same pattern as record_merge_audit.
+--
+-- plpgsql `FOUND` is the correct signal for ON CONFLICT DO NOTHING:
+-- it is set to TRUE when the insert actually wrote a row and FALSE
+-- when the conflict target fired. A RETURNING-into-variable does NOT
+-- work here — on a swallowed conflict the assignment doesn't execute
+-- and the variable keeps its previous value.
 
 create or replace function public.upsert_raw_events(
   p_user_id uuid,
@@ -16,7 +22,6 @@ as $$
 declare
   v_inserted int := 0;
   v_row jsonb;
-  v_was_insert boolean;
 begin
   for v_row in select * from jsonb_array_elements(p_rows)
   loop
@@ -47,10 +52,9 @@ begin
       coalesce((v_row->>'attachments_present')::boolean, false),
       v_row->'raw_ref'
     )
-    on conflict (user_id, source, source_event_id) do nothing
-    returning true into v_was_insert;
+    on conflict (user_id, source, source_event_id) do nothing;
 
-    if v_was_insert then
+    if FOUND then
       v_inserted := v_inserted + 1;
     end if;
   end loop;
