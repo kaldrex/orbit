@@ -57,6 +57,28 @@ describe("wacliToRawEvents", () => {
     }
   });
 
+  it("strips NUL bytes from body_preview and raw_ref (Postgres JSONB safety)", () => {
+    const d = new Database(":memory:");
+    const schema = [
+      `CREATE TABLE chats (jid TEXT PRIMARY KEY, kind TEXT, name TEXT, last_message_ts INTEGER)`,
+      `CREATE TABLE messages (rowid INTEGER PRIMARY KEY AUTOINCREMENT, chat_jid TEXT, chat_name TEXT, msg_id TEXT, sender_jid TEXT, sender_name TEXT, ts INTEGER, from_me INTEGER, text TEXT, display_text TEXT, media_type TEXT, media_caption TEXT, UNIQUE(chat_jid, msg_id))`,
+    ];
+    for (const s of schema) d.prepare(s).run();
+    // Use parameterized inserts so the NUL byte survives intact.
+    const NUL = "\u0000";
+    d.prepare("INSERT INTO chats VALUES (?, ?, ?, ?)").run(
+      "c@wa", "dm", `C${NUL}ool`, 0,
+    );
+    d.prepare(
+      "INSERT INTO messages (chat_jid, chat_name, msg_id, sender_jid, sender_name, ts, from_me, text) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    ).run("c@wa", `C${NUL}ool`, "m1", "s@wa", `Nam${NUL}e`, 1_713_400_000, 0, `hi${NUL}there`);
+
+    const rows = wacliToRawEvents(d);
+    expect(rows[0].body_preview).not.toContain(NUL);
+    expect(rows[0].raw_ref.chat_name).not.toContain(NUL);
+    expect(rows[0].participants_raw[0].name).not.toContain(NUL);
+  });
+
   it("direction maps from from_me (1→out, 0→in)", () => {
     const db = new Database(FIXTURE, { readonly: true });
     const rows = wacliToRawEvents(db);
