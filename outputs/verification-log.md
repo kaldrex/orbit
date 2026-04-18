@@ -247,6 +247,63 @@ All logs: [wacli-live-import.log](./verification/2026-04-18-track2/wacli-live-im
 
 **What the advisor called "end-to-end hasn't happened yet" has now happened. Four hard-to-catch real-data bugs were surfaced and fixed in the process.**
 
+---
+
+## 2026-04-18 — Track 2, postscript: real fast path via direct Postgres COPY
+
+**Why this entry exists:** the HTTP-route bulk import above landed the data but took 3.7 minutes on 33 105 rows. Sanchay correctly pointed out that `COPY` over a direct Postgres connection should do the same work in 5-10 seconds. Implemented and verified.
+
+**Architecture split — one path per problem:**
+
+| Use case | Path | Latency | Why |
+|---|---|---|---|
+| Live streaming from plugin (2-3 evt/s) | `POST /api/v1/raw_events` | ~200 ms/batch | Auth, rate-limit, zod validation, per-event correctness |
+| One-shot historical backfill | `scripts/fast-copy-wacli-to-raw-events.mjs` via direct `COPY` | ~10 s for 33k rows | Bypass HTTP + PostgREST entirely; staging table + ON CONFLICT for idempotency |
+
+Live streaming and historical backfill are different problems. The earlier mistake was forcing both through the same code path.
+
+**What the fast importer does:**
+
+1. Connects directly to the session pooler (port 5432, postgres.xrfcmjllsotkwxxkfamb) using the DB password, not the personal access token.
+2. `CREATE TEMP TABLE raw_events_staging (LIKE public.raw_events INCLUDING DEFAULTS) ON COMMIT DROP` — no constraints, no unique checks.
+3. `COPY raw_events_staging FROM STDIN WITH (FORMAT csv)` — stream 33 105 rows into Postgres in ~4 s.
+4. `INSERT INTO raw_events ... SELECT ... FROM raw_events_staging ON CONFLICT DO NOTHING RETURNING id` — upsert in one atomic statement.
+5. `COMMIT` — temp table drops automatically.
+
+UTF-8 safety is kept locally in the CSV producer: strip `\u0000`, strip unpaired UTF-16 surrogates, `safeSlice` using `Array.from` to respect code points.
+
+**Benchmark (first clean run after `TRUNCATE raw_events`):**
+
+```
+read 33105 rows from wacli.db
+COPY to staging: 3.86 s
+UPSERT final:    6.91 s
+total:          10.77 s     ← 20× faster than the Management-API run
+inserted:       33 105      ← 100% success, first try, no retries
+```
+
+**Idempotency under pressure (re-run on already-loaded DB):**
+
+```
+COPY to staging: 3.93 s
+UPSERT final:    0.74 s    ← trivial work, every row hits ON CONFLICT DO NOTHING
+total:           4.67 s
+inserted:        0         ← exactly right
+```
+
+Row count pre- and post-rerun: 33 105 both times. Unique `source_event_id`s: 33 105. Every row has body_preview (`with_body = 33 105 / 33 105`). Threads: 878. Date range: 2022-11-11 → 2026-04-17. **No duplicates, no loss.**
+
+**Lesson internalized (also in commit messages):**
+
+The spec's §0 "real data beats synthetic" was the lesson, and the corollary is **"one path per problem."** Trying to reuse the streaming route for bulk backfill hid the real bottleneck (HTTP RTT × batch count) behind a JSON-encoding red herring. Once the problem was named correctly, the solution is a 30-line script.
+
+Artifacts:
+- `scripts/fast-copy-wacli-to-raw-events.mjs`
+- [fast-copy-run.log](./verification/2026-04-18-track2/fast-copy-run.log)
+- [fast-copy-rerun.log](./verification/2026-04-18-track2/fast-copy-rerun.log)
+
+---
+
 **Rollback:**
 - Both migrations use `create table if not exists` / `create or replace function`. To undo cleanly: `drop function public.upsert_raw_events(uuid, jsonb);` then `drop table public.raw_events cascade;`. Ship this as a new migration file if needed.
 - Endpoint rollback: `git revert` the route handler commit.
