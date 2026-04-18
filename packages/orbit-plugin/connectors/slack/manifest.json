@@ -1,6 +1,0 @@
-{
-  "name": "slack",
-  "displayName": "Slack",
-  "mode": "realtime",
-  "webhookEvent": "slack"
-}
