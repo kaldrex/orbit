@@ -137,12 +137,49 @@ Summary: [outputs/verification/2026-04-18-track2/summary.md](./verification/2026
 - RLS is deny-by-default; new table inherits default `authenticated` access only through the new policies.
 - Endpoint is net-new; no other caller depends on it yet.
 
+**End-to-end smoke verification (real HTTP, not mocks):**
+
+Started `next dev` on port 3456, posted real requests:
+
+```
+$ curl -X POST http://localhost:3456/api/v1/raw_events -d '[{"source":"whatsapp",...}]'
+  → 401 {"error":"Unauthorized"}
+
+$ curl -X POST http://localhost:3456/api/v1/raw_events -H 'authorization: Bearer orb_live_fake' -d '[]'
+  → 401 (validateApiKey rejects fake tokens against real Supabase RPC)
+```
+
+Full transcripts: [e2e-401-noauth.txt](./verification/2026-04-18-track2/e2e-401-noauth.txt), [e2e-400-paths.txt](./verification/2026-04-18-track2/e2e-400-paths.txt).
+
+Production build: `npm run build` compiled successfully with `/api/v1/raw_events` listed as a dynamic route.
+
+```
+✓ Compiled successfully in 7.1s
+├ ƒ /api/v1/raw_events
+```
+
+Captured at [next-build-routes.txt](./verification/2026-04-18-track2/next-build-routes.txt). This proves:
+1. Route handler compiles under Next.js 16.2.3 with Turbopack
+2. It's registered as a dynamic route (correct — has `dynamic = "force-dynamic"`)
+3. Auth layer runs and denies unauthenticated / invalid-token requests before any body parsing (correct security ordering)
+
+What's still deferred: full round-trip with a valid API key against real Supabase — this would actually write a row and is not safe to exercise from the worktree without an explicit go-ahead.
+
+**RPC correctness fix (post-commit):**
+
+Discovered during advisor review that the original RPC used `returning true into v_was_insert` — this does not fire on `ON CONFLICT DO NOTHING` (no row returned, so the variable keeps its previous value across iterations, causing miscounted inserts). Fixed by switching to plpgsql's `FOUND`, which is the correct signal for this idiom. Added `tests/unit/upsert-raw-events-rpc.test.ts` (5 tests) as a regression guard against ever reintroducing the `returning-into` pattern.
+
+**Additional cleanup:**
+
+- Pinned `@vitest/coverage-v8@^3` to drop the `--legacy-peer-deps` workaround; `npm install` is now clean under the default resolver.
+
 **Deferred (documented, not faked):**
 - Production Supabase `supabase db push` of both migrations.
-- Live bulk import of Sanchay's 33 k wacli messages against prod; idempotency spot-check.
+- Live bulk import of Sanchay's 33 k wacli messages against prod; idempotency spot-check after two runs.
+- Round-trip probe with a valid API key (requires either a staging DB or a live Supabase write).
 
 **Rollback:**
-- Both migrations use `create table if not exists` / `create or replace function`. To undo cleanly: `drop function public.upsert_raw_events(uuid, jsonb);` then `drop table public.raw_events cascade;`. Done via a new migration file in a follow-up commit.
+- Both migrations use `create table if not exists` / `create or replace function`. To undo cleanly: `drop function public.upsert_raw_events(uuid, jsonb);` then `drop table public.raw_events cascade;`. Ship this as a new migration file if needed.
 - Endpoint rollback: `git revert` the route handler commit.
 
 ---

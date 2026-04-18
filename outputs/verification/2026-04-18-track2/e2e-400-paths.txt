@@ -1,0 +1,11 @@
+=== empty batch ===
+{"error":"Unauthorized"}
+status=401
+
+=== bad source enum ===
+{"error":"Unauthorized"}
+status=401
+
+=== invalid json ===
+{"error":"Unauthorized"}
+status=401
