@@ -28,7 +28,7 @@
 - Runtime: <5s per test; whole suite <60s
 
 ### L2 — Integration (fixtures + mocked externals)
-- Plugin signal-buffer → mock `/api/v1/ingest`
+- Plugin connectors → mock `POST /api/v1/raw_events`
 - wacli.db importer against a fixture SQLite
 - Gmail connector against mocked `gws` stdout
 - Packet assembler against fixture raw_events
@@ -185,20 +185,18 @@ Fixtures must be reproducible — a script at `tests/fixtures/rebuild.sh` fetche
 
 Per-track rollback plan:
 
-**Track 1 (plugin pipeline fixes):**
-- Keep prior plugin directory as `~/.openclaw/plugins/orbit-connector-prev/`
-- Rollback: `mv plugins/orbit-connector plugins/orbit-connector-broken && mv plugins/orbit-connector-prev plugins/orbit-connector && systemctl --user restart openclaw-gateway.service`
-- Verify: capability report resumes within 60s
+**Track 1 + 2 (landed, then retired in the 2026-04-18 clean-slate prune):**
+- The old pre-pivot plugin (`~/.openclaw/plugins/orbit-connector`) and the Neo4j-first `/api/v1/ingest` path both shipped then were deleted on 2026-04-18. No rollback plan for them — there's nothing to roll back to and nothing worth keeping.
+- `raw_events` table + `/api/v1/raw_events` endpoint remain live; they are the ledger ingress.
 
-**Track 2 (raw_events ledger):**
-- All migrations are additive (new tables, never DROP)
-- Rollback: stop writing to `raw_events`; system falls back to existing flow
-- Verify: ingest rate unchanged in gateway logs
+**Track 2.5 (plugin rewrite, blocking):**
+- New plugin scaffolded fresh at `packages/orbit-plugin/`, writing only to `/api/v1/raw_events`.
+- Rollback: revert the plugin commit + `systemctl --user stop openclaw-gateway.service`. The claw VM has no Orbit plugin installed as of the clean slate; any regression simply reverts to the "stopped" baseline.
 
 **Track 3 (projection + packet APIs):**
-- New endpoints, parallel to existing
-- Rollback: feature-flag off `/api/v1/person/:id/packet` (return 501)
-- Verify: no UI failures (UI hasn't depended on packet API until Track 5)
+- New endpoints, parallel to nothing (no old equivalent survives).
+- Rollback: feature-flag off `/api/v1/person/:id/packet` (return 501); graph projection can be replayed from `raw_events` any time.
+- Verify: UI is intentionally disconnected until Track 3 rewires it; no UI regression to guard against.
 
 **Track 4 (LLM enrichment):**
 - Cron-driven job; rollback = disable cron entry

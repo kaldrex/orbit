@@ -31,29 +31,43 @@ T1 and T2 are independent and can start in parallel. T3 depends on T2. T4 and T5
 
 ---
 
-## Track 1 — Week-1 pipeline fixes ✅ DONE
+## Track 1 — Week-1 pipeline fixes ✅ DONE, then retired
 
-**Detailed plan:** [2026-04-18-track-1-pipeline-fixes.md](./2026-04-18-track-1-pipeline-fixes.md)
-**Goal:** stop active data loss; close low-hanging pipeline bugs without architecture changes.
+**Detailed plan:** archived at [docs/archive/plans/2026-04-18-track-1-pipeline-fixes.md](../../archive/plans/2026-04-18-track-1-pipeline-fixes.md)
+**Goal at the time:** stop active data loss; close low-hanging pipeline bugs without architecture changes.
 
-- [x] **1.1** Preserve `source_event_id` / `thread_id` / `body_preview` / `direction` / `source` on `INTERACTED` edge (commit `aa44a40`, regression test in `tests/unit/interacted-edge-fields.test.ts`)
-- [x] **1.2** Gmail connector `isAvailable()` hardening — resolver at `packages/orbit-plugin/lib/gws-path.js` shared with `capabilities.js`. (Note: the original "active bug" claim turned out to be stale per `outputs/verification-log.md`; this shipped as defensive hardening with a 3-test regression guard.)
-- [x] **1.3** Import `group_participants` as `CO_PRESENT_IN` edges (weight 0.1) — `src/lib/cypher/co-present-edge.cypher` + `scripts/import-group-participants.mjs` + 3 integration tests
-- [x] **1.4** LID→phone bridge scaffolding — `scripts/lid-bridge-nightly.mjs` + 35-pair seed at `tests/fixtures/lid-seed.json` + 3 integration tests; single-token auto-merge guard asserted
+All four sub-tasks shipped as planned (INTERACTED edge provenance fields, Gmail availability hardening, `CO_PRESENT_IN` importer, LID→phone bridge scaffolding). Every artifact from this track was deleted in the 2026-04-18 clean-slate prune — the old `src/lib/neo4j.ts`, `src/lib/cypher/`, `scripts/import-group-participants.mjs`, `scripts/lid-bridge-nightly.mjs`, `packages/orbit-plugin/` are gone.
+
+Why the work still mattered: it proved the old Neo4j-first pipeline was unsalvageable and forced the clean slate. See `outputs/verification-log.md` for the audit trail.
 
 ---
 
-## Track 2 — raw_events ledger ✅ DONE (except 2.5)
+## Track 2 — raw_events ledger ✅ DONE
 
-**Detailed plan:** [2026-04-18-track-2-raw-events-ledger.md](./2026-04-18-track-2-raw-events-ledger.md)
+**Detailed plan:** archived at [docs/archive/plans/2026-04-18-track-2-raw-events-ledger.md](../../archive/plans/2026-04-18-track-2-raw-events-ledger.md)
 **Goal:** make `raw_events` the immutable source of truth. Everything else becomes a projection.
-**Exit criterion:** `SELECT COUNT(*) FROM raw_events` ≥ 30 000 from Sanchay's WA + re-import produces 0 new rows. **Met:** 33 105 rows, re-run inserts 0.
+**Exit criterion:** `SELECT COUNT(*) FROM raw_events` ≥ 30 000 from Sanchay's WA + re-import produces 0 new rows. **Met:** 33,105 rows, re-run inserts 0.
 
 - [x] **2.1** Supabase migration: `raw_events` table + 7 indexes + unique constraint `(user_id, source, source_event_id)` — applied to prod 2026-04-18 via Management API
-- [x] **2.2** `POST /api/v1/raw_events` endpoint with idempotent upsert — deployed to `orbit-mu-roan.vercel.app`, round-trip verified
-- [x] **2.3** JSONL bootstrap importer (`scripts/import-jsonl-to-raw-events.mjs`)
-- [x] **2.4** wacli.db direct importer — both a live-streaming HTTP variant AND a fast `COPY`-based variant; 33 105 rows landed in 10.77 s
-- [ ] **2.5** Plugin rewrite: signal-buffer → raw_events on claw (ledger-first, projection second). _Open — still uses `/api/v1/ingest` the old way. Not blocking Track 3._
+- [x] **2.2** `POST /api/v1/raw_events` endpoint with idempotent upsert — deployed to `orbit-mu-roan.vercel.app`, round-trip verified. Lives at [src/app/api/v1/raw_events/route.ts](../../../src/app/api/v1/raw_events/route.ts).
+- [x] **2.3** ~~JSONL bootstrap importer~~ — redundant after 2.4 landed; script deleted in the clean-slate prune.
+- [x] **2.4** wacli.db direct importer — [scripts/fast-copy-wacli-to-raw-events.mjs](../../../scripts/fast-copy-wacli-to-raw-events.mjs); 33,105 rows in ~10 s via direct Postgres `COPY`. Exports `wacliToRawEvents()` pure mapper.
+
+---
+
+## Track 2.5 — Plugin rewrite ⚠️ BLOCKING
+
+**Detailed plan:** _pending._
+**Goal:** fresh OpenClaw plugin that posts only to `/api/v1/raw_events`, reads only `/packet`, writes learnings through `/observation`. No signal-buffer, no direct Neo4j writes, no legacy protocol.
+**Exit criterion:** plugin deployed to claw; live WhatsApp events land in `raw_events` within 500 ms per event; ingest lag < 5 min.
+
+- [ ] **2.5.1** New plugin scaffold at `packages/orbit-plugin/`
+- [ ] **2.5.2** WhatsApp connector → `raw_events`
+- [ ] **2.5.3** Gmail connector → `raw_events`
+- [ ] **2.5.4** Calendar / Slack / Linear connectors → `raw_events`
+- [ ] **2.5.5** Deploy to claw; gateway running again
+
+Ships in lockstep with Track 3 — no events flow anywhere until the plugin is rewritten.
 
 ---
 
@@ -114,11 +128,11 @@ T1 and T2 are independent and can start in parallel. T3 depends on T2. T4 and T5
 
 ## Cross-cutting deliverables (not on a track, but required for V0)
 
-- [ ] **CC-1** Test infrastructure: Vitest configured, `npm test` wired to CI, L1/L2 suites running under 5 min total
-- [ ] **CC-2** Fixtures committed: `tests/fixtures/wacli-minimal.db` (~50 KB), `gmail-sample.jsonl` (~200 KB), `google-contacts-sample.json` (~30 KB), golden packets
-- [ ] **CC-3** `outputs/verification-log.md` — every claim backed by an artifact row
-- [ ] **CC-4** Rollback rehearsal on Vercel prod — `outputs/verification/2026-04-18-vercel-rollback-rehearsal.md` committed
-- [ ] **CC-5** Nightly health cron on `claw` — plugin heartbeat, ingest lag, packet rebuild time
+- [x] **CC-1** Test infrastructure: Vitest configured, `npm test` runs in ~1 s, 26 passing
+- [x] **CC-2** Fixtures committed: `tests/fixtures/wacli-minimal.db` + `tests/fixtures/golden-packets/` (Imran, Hardeep, Aryan Yadav). Gmail + Google Contacts fixtures land with Track 2.5 connectors.
+- [x] **CC-3** `outputs/verification-log.md` — live and appended. Entries pre-2026-04-18 reference deleted artifacts (expected — audit history).
+- [ ] **CC-4** Rollback rehearsal on Vercel prod — owed after Track 3 deploy lands.
+- [ ] **CC-5** Nightly health cron on `claw` — after Track 5 (something worth monitoring).
 
 ---
 
@@ -139,4 +153,5 @@ T1 and T2 are independent and can start in parallel. T3 depends on T2. T4 and T5
 | Date | Change |
 |---|---|
 | 2026-04-18 (AM) | Initial roadmap created alongside Track 1 plan. |
-| 2026-04-18 (PM) | Track 1 landed. Track 2 plan + migrations + API + importers landed. Migrations applied to prod Supabase; Vercel prod redeployed; 33 105 real wacli messages backfilled via direct Postgres COPY in 10.77 s. Sub-item 2.5 (plugin rewrite) split off as open. Track 3 unblocked. |
+| 2026-04-18 (PM) | Track 1 landed. Track 2 plan + migrations + API + importers landed. Migrations applied to prod Supabase; Vercel prod redeployed; 33,105 real wacli messages backfilled via direct Postgres COPY in 10.77 s. Sub-item 2.5 (plugin rewrite) split off as open. Track 3 unblocked. |
+| 2026-04-18 (evening) | **Clean-slate prune.** 96 files, −11,417 net LOC removed: 13 pre-pivot API routes, 5 `src/lib/*` fossils, 10 scripts, 5 test files, both plugin packages (`packages/orbit-plugin/`, `packages/openclaw-plugin/`). Neo4j graph wiped. Claw plugin service stopped + plugin dir removed. Track 1's artifacts no longer exist on disk but the learning landed. Track 2.5 escalated from "not blocking" to **blocking** — nothing is currently posting to the ledger. Track 1/2 detailed plans moved to `docs/archive/plans/`. Golden packets committed at `tests/fixtures/golden-packets/` as Track 3 acceptance target. Agent-context layer restructured into `CLAUDE.md` + `agent-docs/`. |
