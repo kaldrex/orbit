@@ -7,6 +7,14 @@
 //   chats(jid, kind, name, last_message_ts)         -- kind: dm|group|broadcast|unknown
 //   contacts(jid, phone, push_name, full_name, first_name, business_name, updated_at)
 
+// Postgres JSONB rejects embedded \u0000. WhatsApp messages occasionally
+// carry NUL bytes in their body or media_caption (binary payloads, broken
+// encoding). Strip them here; the rest of the string is preserved.
+function sanitize(s) {
+  if (s == null) return s;
+  return String(s).replace(/\u0000/g, "");
+}
+
 export function wacliToRawEvents(db, { connectorVersion, skipIds } = {}) {
   const rows = db
     .prepare(
@@ -31,7 +39,7 @@ export function wacliToRawEvents(db, { connectorVersion, skipIds } = {}) {
     const occurred = new Date(Number(r.ts) * 1000).toISOString();
     const participants = [];
     if (r.sender_jid && r.sender_jid !== "self") {
-      participants.push({ jid: r.sender_jid, name: r.sender_name ?? null });
+      participants.push({ jid: r.sender_jid, name: sanitize(r.sender_name) ?? null });
     }
     const phone =
       r.sender_jid && /^\d+@s\.whatsapp\.net$/.test(r.sender_jid)
@@ -49,10 +57,10 @@ export function wacliToRawEvents(db, { connectorVersion, skipIds } = {}) {
       participants_raw: participants,
       participant_phones: phone ? [phone] : [],
       participant_emails: [],
-      body_preview: r.body ? String(r.body).slice(0, 160) : null,
+      body_preview: r.body ? sanitize(String(r.body)).slice(0, 160) : null,
       attachments_present: Boolean(r.media_type),
       raw_ref: {
-        chat_name: r.chat_name,
+        chat_name: sanitize(r.chat_name),
         kind: r.kind ?? "unknown",
         msg_id: r.msg_id,
       },
