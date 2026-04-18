@@ -41,6 +41,14 @@ Each observation is one timestamped, confidence-scored row. Over months, the mem
 
 **Without observations, Orbit is a nice address book. With them, it's defensible.**
 
+### The mechanics (post-V0 vision)
+
+The full story isn't just "observations compound." It's a three-tier system: **rules produce evidence packets** (messaging pattern, group co-presence, platform absence, calendar overlap, email-header signals, identity conflict evidence); **Orbit-side LLM reads evidence — not raw data** — and writes enriched packet fields (`recent_topics`, `outstanding_action_items`, `tone`); **OpenClaw-side LLM** reads packets for per-query work (drafts, prep, search). Cluster-first identity mapping (resolve the group-co-presence clusters first, use A's classification to inform B's) is the long-term shape. Track 4 is the first step; the full architecture is in [docs/archive/data-science/BRAINSTORM-intelligence-redesign.md](../docs/archive/data-science/BRAINSTORM-intelligence-redesign.md).
+
+### The gap Imran's packet is evidence we can close
+
+Cross-source identity resolution was at **~1%** before the 12-month Gmail widening — most Gmail senders never linked to WA contacts. [Imran's packet](../tests/fixtures/golden-packets/person_packet_imran.json) (1 phone + 2 emails → 1 person) is the first real proof the name-waterfall + merge rules can actually bridge channels. The breakthrough is fragile — the Google Contacts `contacts.other.readonly` scope (deferred per [design spec §10](../docs/superpowers/specs/2026-04-18-orbit-v0-design.md)) is what makes it robust at scale (2–3× the cross-source match rate). Don't treat cross-source resolution as solved; it's the hard problem and the one the product lives or dies on. Historical analysis in [docs/archive/data-science/REPORT.md](../docs/archive/data-science/REPORT.md).
+
 ## The unit of value: the person packet
 
 Not the graph. Not the feed. **One structured JSON record per human**, combining cross-channel presence, relationship state, open questions, and LLM-enriched context. Three canonical shapes are committed at [tests/fixtures/golden-packets/](../tests/fixtures/golden-packets/). Track 3's assembler must diff-clean against those. See [05-golden-packets.md](./05-golden-packets.md).
