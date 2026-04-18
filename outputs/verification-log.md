@@ -62,3 +62,45 @@ $ npx tsc --noEmit
 **Rollback:** `git revert <commit-hash>` — safe at any time since the change is additive.
 
 ---
+
+## 2026-04-18 — Track 1 scaffolding: Vitest + fixtures + four defensive fixes
+
+**Claim:** "Track 1 of the V0 master roadmap is landed with code + regression tests for every sub-task."
+
+**Changes:**
+- Vitest wired (`package.json`, `vitest.config.ts`), CI workflow at `.github/workflows/test.yml`
+- Regression test `tests/unit/interacted-edge-fields.test.ts` — locks in the 5 audit fields from fix #2 above so a future Cypher refactor cannot silently drop them
+- Defensive resolver `packages/orbit-plugin/lib/gws-path.js` + tests `tests/unit/gmail-availability.test.js` — probes known absolute paths before falling back to `which`. Even though the live diagnosis (fix #1 entry above) showed the PATH fix was unnecessary on the current claw, the resolver is strictly additive and protects against the class of subprocess-PATH bugs elsewhere. Shared with `capabilities.js` so the capability report and connector availability never disagree.
+- Deterministic fixture `tests/fixtures/wacli-minimal.db` (45 KB, 10 chats, 50 msgs, 5 contacts, 12 group_participants) built by `tests/fixtures/build-wacli-minimal.mjs`
+- New importer `scripts/import-group-participants.mjs` + Cypher `src/lib/cypher/co-present-edge.cypher` — materializes WA group membership as `CO_PRESENT_IN` edges (weight 0.1, `source:'wa_group'`, accumulating `group_jids` array). Pure-over-`runCypher` so integration tests swap in a fake.
+- LID→phone bridge scaffolding `scripts/lid-bridge-nightly.mjs` + seed `tests/fixtures/lid-seed.json` (35 synthetic pairs, confidence ≥ 0.8). Includes explicit anti-regression: single-token overlaps produce confidence < 1 never auto-merges (spec §5).
+
+**Evidence:**
+
+```
+$ npm test
+ RUN  v3.2.4
+
+ ✓ tests/unit/sanity.test.js                    (1 test)
+ ✓ tests/unit/interacted-edge-fields.test.ts    (5 tests)
+ ✓ tests/unit/gmail-availability.test.js        (3 tests)
+ ✓ tests/integration/group-participants-import.test.js (3 tests)
+ ✓ tests/integration/lid-bridge.test.js         (3 tests)
+
+ Test Files  5 passed (5)
+      Tests  15 passed (15)
+```
+
+Full log: [outputs/verification/2026-04-18-track1/npm-test.log](./verification/2026-04-18-track1/npm-test.log)
+
+**Deferred (requires infra access beyond worktree):**
+- Live claw capability-report capture after a gateway restart — once landed, append `outputs/verification/2026-04-18-track1/gateway-channels-after-fix.txt`.
+- Live dry-run of `scripts/import-group-participants.mjs` against Sanchay's real `wacli.db` — would emit `{groups_processed: N}` where N = count of WA groups with ≥ 2 known members. Run once the branch merges and the plugin can reach Neo4j.
+
+**Rollback (each commit is independent):**
+- `git revert` the commit of the specific sub-task
+- All changes are additive — no schema drops, no data rewrite, no breaking contracts
+
+**Commit:** _pending — to land as a single commit or per-task commits on `claude/cool-sammet-36b821`_
+
+---
