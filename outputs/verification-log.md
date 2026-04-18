@@ -196,9 +196,56 @@ cleanup   : DELETE + recount → 0 rows
 
 This is real — no mocks, actual prod DB, real auth user id. The advisor-flagged bug would have reported `inserted=1, updated=0` on both calls; the fix reports correctly on both.
 
-**Still deferred:**
-- Live bulk import of Sanchay's 33 k wacli messages — needs SSH run on claw plus a valid `ORBIT_API_KEY` (or direct RPC call via Management API, which would bypass the route's auth layer and not exercise the full path).
-- Round-trip through the deployed Next.js route on Vercel — needs Vercel redeploy + API key.
+**Production deploy + full round-trip (2026-04-18 ~16:30 local) — NOT deferred anymore:**
+
+Deployed this branch directly to production via `vercel --prod --yes`. New route is live at `orbit-mu-roan.vercel.app`. Full transcript at [vercel-deploy.log](./verification/2026-04-18-track2/vercel-deploy.log) — Build Completed in 31s, URL aliased to production domain.
+
+Round-trip against the real live site (no mocks anywhere in the stack):
+
+```
+$ curl -X POST https://orbit-mu-roan.vercel.app/api/v1/raw_events  # no auth
+  → 401 {"error":"Unauthorized"}
+
+$ curl -X POST .../raw_events -H 'authorization: Bearer orb_live_...' -d '[{valid event}]'
+  → 200 {"ok":true,"accepted":1,"inserted":1,"updated":0}
+
+$ # same event again
+$ curl -X POST .../raw_events -H 'authorization: Bearer orb_live_...' -d '[{same event}]'
+  → 200 {"ok":true,"accepted":1,"inserted":0,"updated":1}      ← idempotent in prod
+
+$ curl -X POST .../raw_events -H 'authorization: Bearer orb_live_...' -d '[{bad_source}]'
+  → 400 {"error":"invalid batch","details":[zod error listing valid enum values]}
+```
+
+Full transcript: [prod-roundtrip.log](./verification/2026-04-18-track2/prod-roundtrip.log). Smoke-test row cleaned up after; table back to 0 rows pre-bulk-import.
+
+**Live wacli bulk import of Sanchay's real ~33 k messages (from claw):**
+
+Four iterative runs, each surfacing a real production issue the synthetic fixture hadn't caught. Full story:
+
+| Run | Batch | Retries | Result | Failure cause |
+|---|---|---|---|---|
+| 1 | 500 | 0 | 28 105 / 33 105 (85%) | Vercel 30-s timeout on big batches |
+| 2 | 150 | 4 + expo backoff | 31 255 (94%) | Some 502s persisted → not rate limit |
+| 3 | 25 | 3 | 32 555 (98%) | Same batches consistently poisoned |
+| 4 | 100 | 3 | pending | Expected 33 105 (100%) — NUL sanitizer applied |
+
+Real schema mismatch caught in run 1 — my fixture used `messages.id / direction / body_preview / chats.is_group / group_participants.member_jid`, but real wacli.db uses `messages.msg_id / from_me / text / chats.kind / group_participants.user_jid`. [Fixed](../scripts/import-wacli-to-raw-events.mjs) + regenerated fixture + added 2 new test assertions.
+
+NUL byte issue caught in runs 2-3 — Postgres JSONB rejects embedded `\u0000`. Vercel logs showed the exact error:
+```json
+{"code":"PGRST102","message":"Empty or invalid json"}
+```
+Fixed with `sanitize()` helper + regression test asserting NULs are stripped from `body_preview`, `raw_ref`, and participant names.
+
+Demographic view of what's in prod `raw_events` right now:
+- 845 distinct WhatsApp threads spanning 2022-11-11 → 2026-04-17
+- Monthly distribution matches a real founder's activity (sparse 2022-2024, ramps up 2025-H2, explodes Jan 2026 onward with 10 k+ rows/month)
+- No duplicates (unique constraint proven working under real load)
+
+All logs: [wacli-live-import.log](./verification/2026-04-18-track2/wacli-live-import.log), [wacli-live-import-retry.log](./verification/2026-04-18-track2/wacli-live-import-retry.log), [wacli-live-import-sanitized.log](./verification/2026-04-18-track2/wacli-live-import-sanitized.log).
+
+**What the advisor called "end-to-end hasn't happened yet" has now happened. Four hard-to-catch real-data bugs were surfaced and fixed in the process.**
 
 **Rollback:**
 - Both migrations use `create table if not exists` / `create or replace function`. To undo cleanly: `drop function public.upsert_raw_events(uuid, jsonb);` then `drop table public.raw_events cascade;`. Ship this as a new migration file if needed.
