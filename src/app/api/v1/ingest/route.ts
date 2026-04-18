@@ -162,6 +162,13 @@ async function processIngest(
     relationship_context?: string;
     sentiment?: string;
     connection_context?: string;
+    // Source-level provenance (optional, additive). When present, stored on
+    // the INTERACTED edge so events are replayable + auditable downstream.
+    source?: string;                 // "whatsapp" | "gmail" | "calendar" | ...
+    source_event_id?: string;        // Gmail message_id, WA msg_id, Calendar event id
+    thread_id?: string;              // Gmail thread_id, WA chat_jid, Slack thread_ts
+    body_preview?: string;           // first ~160 chars of body
+    direction?: string;              // "in" | "out" from self's perspective
   }>,
   authExtras: { authEmail?: string; displayName?: string }
 ) {
@@ -302,6 +309,12 @@ async function processIngest(
           topic: ix.topic || null,
           relationshipContext: ix.relationship_context || null,
           sentiment: ix.sentiment || null,
+          // Provenance: store whatever the connector gave us; nulls are fine.
+          source: ix.source || null,
+          sourceEventId: ix.source_event_id || null,
+          threadId: ix.thread_id || null,
+          bodyPreview: ix.body_preview ? ix.body_preview.slice(0, 160) : null,
+          direction: ix.direction || null,
         });
       }
 
