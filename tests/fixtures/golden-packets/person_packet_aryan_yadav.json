@@ -1,0 +1,83 @@
+{
+  "person_id": "person_aryan_yadav",
+  "canonical_name": "Aryan Yadav",
+  "aliases": [],
+  "identifiers": {
+    "phones_e164": [
+      "+918149326009"
+    ],
+    "emails": [
+      "work.aryanyadav@gmail.com"
+    ],
+    "whatsapp_jids": [
+      "918149326009@s.whatsapp.net"
+    ]
+  },
+  "channels": {
+    "whatsapp": {
+      "message_count": 149,
+      "first_at": "2026-02-11T09:29:19+00:00",
+      "last_at": "2026-03-31T06:54:55+00:00",
+      "outgoing": 89,
+      "incoming": 60,
+      "reply_ratio": 0.6,
+      "last_preview": "like yes sure we can get on a call"
+    },
+    "gmail": {
+      "message_count_total": 1,
+      "message_count_direct": 1,
+      "message_count_cc_only": 0,
+      "first_at": "2025-11-06T05:58:09+00:00",
+      "last_at": "2025-11-06T05:58:09+00:00",
+      "self_outgoing_count": 0,
+      "last_subject": "History Made in Mumbai: India\u2019s First and Biggest AI Filmmaking Festival 10M+ Views, Bollywood Stars & Viral Robot Momen"
+    },
+    "calendar": {
+      "past_meetings": null,
+      "next_meeting": null,
+      "_note": "Calendar not ingested at rest; requires live pull with attendee-email join"
+    }
+  },
+  "relationship": {
+    "first_touch": "2025-11-06T05:58:09+00:00",
+    "last_touch": "2026-03-31T06:54:55+00:00",
+    "days_since_last": 18,
+    "total_interactions": 150,
+    "bidirectional": true,
+    "intensity_score": 0.52,
+    "going_cold": true,
+    "trend": "declining"
+  },
+  "segment": {
+    "primary": "peer",
+    "confidence": "high",
+    "evidence": [
+      "long-running WA (150 interactions bidirectional)"
+    ]
+  },
+  "context": {
+    "recent_topics": [
+      "module",
+      "financial",
+      "loan",
+      "capital",
+      "model",
+      "credit",
+      "portfolio",
+      "risk",
+      "project",
+      "message"
+    ],
+    "shared_groups": null,
+    "outstanding_action_items": [
+      "Agentic, as in which part are you talking about?",
+      "Please go through it and let me know if you have any questions",
+      "Return trip ?",
+      "Check and tell me",
+      "Is too and fro covered for darshan ?"
+    ],
+    "_note_topics": "Rule-based: top-count alphabetic tokens \u22654 chars, stopword-filtered. LLM would produce cleaner phrases.",
+    "_note_action_items": "Rule-based: regex patterns for imperatives + questions directed at Sanchay. LLM would detect follow-ups and promises more reliably.",
+    "_note_shared_groups": "Null for @s.whatsapp.net-only persons because group_participants uses @lid identities \u2014 needs LID-phone bridge before group membership is queryable."
+  }
+}

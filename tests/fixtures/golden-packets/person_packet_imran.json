@@ -1,0 +1,80 @@
+{
+  "person_id": "person_imran_sable",
+  "canonical_name": "Imran Sable",
+  "aliases": [
+    "Imran Sir"
+  ],
+  "identifiers": {
+    "phones_e164": [
+      "+919819168786"
+    ],
+    "emails": [
+      "sable@cyphersol.co.in",
+      "imransable1978@gmail.com"
+    ],
+    "whatsapp_jids": [
+      "919819168786@s.whatsapp.net"
+    ]
+  },
+  "channels": {
+    "whatsapp": {
+      "message_count": 86,
+      "first_at": "2026-02-09T11:27:13+00:00",
+      "last_at": "2026-04-14T11:16:37+00:00",
+      "outgoing": 56,
+      "incoming": 30,
+      "reply_ratio": 0.65,
+      "last_preview": "(message)"
+    },
+    "gmail": {
+      "message_count_total": 74,
+      "message_count_direct": 10,
+      "message_count_cc_only": 64,
+      "first_at": "2025-04-20T14:50:48+00:00",
+      "last_at": "2026-03-17T08:07:19+00:00",
+      "self_outgoing_count": 7,
+      "last_subject": "Fwd: Discussion regarding Applications"
+    },
+    "calendar": {
+      "past_meetings": null,
+      "next_meeting": null,
+      "_note": "Calendar not ingested at rest; requires live pull with attendee-email join"
+    }
+  },
+  "relationship": {
+    "first_touch": "2025-04-20T14:50:48+00:00",
+    "last_touch": "2026-04-14T11:16:37+00:00",
+    "days_since_last": 4,
+    "total_interactions": 96,
+    "bidirectional": true,
+    "intensity_score": 0.51,
+    "going_cold": false,
+    "trend": "rising"
+  },
+  "segment": {
+    "primary": "work_partner",
+    "confidence": "high",
+    "evidence": [
+      "cyphersol cofounder/teammate"
+    ]
+  },
+  "context": {
+    "recent_topics": [
+      "update",
+      "dear",
+      "https",
+      "google",
+      "process",
+      "view",
+      "drive",
+      "important",
+      "help",
+      "file"
+    ],
+    "shared_groups": null,
+    "outstanding_action_items": [],
+    "_note_topics": "Rule-based: top-count alphabetic tokens \u22654 chars, stopword-filtered. LLM would produce cleaner phrases.",
+    "_note_action_items": "Rule-based: regex patterns for imperatives + questions directed at Sanchay. LLM would detect follow-ups and promises more reliably.",
+    "_note_shared_groups": "Null for @s.whatsapp.net-only persons because group_participants uses @lid identities \u2014 needs LID-phone bridge before group membership is queryable."
+  }
+}
