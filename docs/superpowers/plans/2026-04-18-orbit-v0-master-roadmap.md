@@ -47,15 +47,15 @@ T1 and T2 are independent and can start in parallel. T3 depends on T2. T4 and T5
 
 ## Track 2 — raw_events ledger
 
-**Detailed plan:** _pending — write after T1 unit/integration tests are green._
+**Detailed plan:** [2026-04-18-track-2-raw-events-ledger.md](./2026-04-18-track-2-raw-events-ledger.md)
 **Goal:** make `raw_events` the immutable source of truth. Everything else becomes a projection.
 **Exit criterion:** `SELECT COUNT(*) FROM raw_events` ≥ 30 000 from Sanchay's WA + ≥ 800 from wide Gmail, and re-import produces 0 new rows.
 
-- [ ] **2.1** Supabase migration: `raw_events` table + indexes + unique constraint `(user_id, source, source_event_id)`
-- [ ] **2.2** `POST /api/v1/raw_events` endpoint with idempotent upsert
-- [ ] **2.3** Bootstrap: import existing JSONL exports into ledger
-- [ ] **2.4** wacli.db direct importer (SQLite → raw_events bulk load)
-- [ ] **2.5** Plugin rewrite: signal-buffer → raw_events (ledger-first, projection second)
+- [x] **2.1** Supabase migration: `raw_events` table + indexes + unique constraint `(user_id, source, source_event_id)`
+- [x] **2.2** `POST /api/v1/raw_events` endpoint with idempotent upsert
+- [x] **2.3** Bootstrap: import existing JSONL exports into ledger
+- [x] **2.4** wacli.db direct importer (SQLite → raw_events bulk load)
+- [ ] **2.5** Plugin rewrite: signal-buffer → raw_events (ledger-first, projection second) — _split off to Track 2b once migrations applied in prod_
 
 ---
 
