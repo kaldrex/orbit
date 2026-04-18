@@ -1,0 +1,5 @@
+read 33105 rows from wacli.db
+COPY to staging: 3.93s
+  UPSERT final:  0.74s
+  total:         4.67s
+  inserted:      0
