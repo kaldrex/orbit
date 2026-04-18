@@ -1,41 +1,20 @@
-# Orbit Docs
+# docs/
 
-Everything you need to pick up where the last session left off.
+The agent-context layer lives at the repo root, not here. Start with [../CLAUDE.md](../CLAUDE.md) and [../agent-docs/](../agent-docs/).
 
-## Start here
+## What lives in this folder
 
-**`handoff/README.md`** — Next-session entry point. Tells you the #1 problem to fix and where to look.
-
-## Folder layout
-
-```
-docs/
-├── README.md               ← this file
-├── handoff/                ← current state + fix roadmap
-│   ├── README.md                      entry point
-│   ├── 01-system-overview.md          how Orbit works end-to-end
-│   ├── 02-live-state.md               credentials, numbers, URLs
-│   ├── 03-problems.md                 40 concrete issues from 3 audits
-│   └── 04-next-steps.md               priority-ordered fix plan
-└── data-science/           ← reference algorithms (Python, not deployed)
-    ├── ENGINEER_HANDOFF.md            what the DS team built
-    ├── REPORT.md                      validation results
-    ├── BRAINSTORM-intelligence-redesign.md   future vision
-    ├── intelligence_layer.py          scoring + canonical-name resolver (validated)
-    ├── platform_rules.py              per-source cleaning rules
-    └── first_time_ingestion.py        first-run classification pipeline
-```
-
-## Quick links — what lives where in the codebase
-
-| Surface | Path |
+| Path | Purpose |
 |---|---|
-| **Plugin** (runs on user's agent) | `packages/orbit-plugin/` |
-| **Web app + API** | `src/app/` |
-| **Core server logic** | `src/lib/` |
-| **One-shot scripts** | `scripts/` |
-| **OpenClaw marketplace entry** | `marketplace.json` (repo root) |
+| [superpowers/specs/](./superpowers/specs/) | Canonical architecture + testing specs. Authoritative. |
+| [superpowers/plans/](./superpowers/plans/) | Master roadmap + active track plans. |
+| [archive/](./archive/) | Superseded handoff docs, retired track plans, historical data-science + vision material. Kept for context, not for guidance. |
+| [handoff/](./handoff/) | Retired. `handoff/README.md` is a forwarder to the new agent-context layer. |
 
-## The one thing to fix first
+## Reading order
 
-**Canonical Identity Resolution.** Ramon appears 3 times, Eric 3 times, Suhas 2 times. The rule-based resolver is validated in Python (`docs/data-science/intelligence_layer.py`) but not ported. Phase 1 in `handoff/04-next-steps.md` walks through the design.
+1. [../CLAUDE.md](../CLAUDE.md) — vision + three contracts + pointer index
+2. [../agent-docs/README.md](../agent-docs/README.md) — decide which deeper docs to load
+3. [superpowers/specs/2026-04-18-orbit-v0-design.md](./superpowers/specs/2026-04-18-orbit-v0-design.md) — when you need the architecture spec verbatim
+4. [superpowers/specs/2026-04-18-testing-and-verification.md](./superpowers/specs/2026-04-18-testing-and-verification.md) — testing contract
+5. [superpowers/plans/2026-04-18-orbit-v0-master-roadmap.md](./superpowers/plans/2026-04-18-orbit-v0-master-roadmap.md) — six-track status + sub-tasks

@@ -2,6 +2,27 @@
 
 Append-only ledger. Every build claim lands here with an evidence artifact and a rollback path.
 
+> **Reading entries below:** anything dated before the 2026-04-18 clean-slate prune references artifacts that no longer exist on disk (old plugin, `/api/v1/ingest`, `src/lib/neo4j.ts`, `src/lib/cypher/*`, import scripts). That's expected — the ledger is frozen history, not current state. For what exists now, read [../agent-docs/03-current-state.md](../agent-docs/03-current-state.md).
+
+---
+
+## 2026-04-18 — Clean-slate prune
+
+**Claim:** "Pre-pivot backend and both OpenClaw plugin packages are deleted; Neo4j is empty; claw plugin service stopped."
+
+**Evidence:**
+- Commits `2aa1638`, `c41257d`, `6dc5769`, `bfb861e`, `54c84f1` on `main`.
+- 96 files changed, −11,417 net LOC across the five commits.
+- `npm test` → 26 passing (down from 41; 15 tests retired with their fossil targets).
+- `npx next build` → clean compile, clean typecheck.
+- Neo4j: `MATCH (n) RETURN count(n)` → 0 (was 1,711 persons, 366k edges).
+- Claw: `systemctl --user is-active openclaw-gateway.service` → `inactive`; `ls ~/.openclaw/plugins/` → no orbit plugins.
+- Agent-context layer restructured: [../CLAUDE.md](../../CLAUDE.md) (60 LOC) + [../agent-docs/](../../agent-docs/) (7 files).
+
+**Rollback:** `git revert <sha>` per commit. Neo4j + claw state re-populates when the new plugin + Track 3 projection ship.
+
+**Commit:** `54c84f1` (docs restructure; the prune itself is across the four earlier commits).
+
 ---
 
 ## 2026-04-18 — Track 1, fix #1: Gmail connector availability on claw
