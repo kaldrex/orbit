@@ -1,0 +1,90 @@
+found 33105 rows; posting in batches of 150 (retries=4)…
+  row 0: inserted=0 updated=150 (cum ins=0 upd=150)
+  row 1500 attempt 1 failed: POST failed: 502 {"error":"write failed"}; sleep 1000ms
+  row 1500 attempt 2 failed: POST failed: 502 {"error":"write failed"}; sleep 2000ms
+  row 1500 attempt 3 failed: POST failed: 502 {"error":"write failed"}; sleep 4000ms
+  row 1500 attempt 4 failed: POST failed: 502 {"error":"write failed"}; sleep 8000ms
+  row 1500 attempt 5 failed: POST failed: 502 {"error":"write failed"}; sleep 16000ms
+  row 1500 GAVE UP after 5 attempts
+  row 3750: inserted=0 updated=150 (cum ins=350 upd=3400)
+  row 7500: inserted=0 updated=150 (cum ins=350 upd=7150)
+  row 9450 attempt 1 failed: POST failed: 502 {"error":"write failed"}; sleep 1000ms
+  row 9450 attempt 2 failed: POST failed: 502 {"error":"write failed"}; sleep 2000ms
+  row 9450 attempt 3 failed: POST failed: 502 {"error":"write failed"}; sleep 4000ms
+  row 9450 attempt 4 failed: POST failed: 502 {"error":"write failed"}; sleep 8000ms
+  row 9450 attempt 5 failed: POST failed: 502 {"error":"write failed"}; sleep 16000ms
+  row 9450 GAVE UP after 5 attempts
+  row 11250: inserted=0 updated=150 (cum ins=750 upd=10350)
+  row 12300 attempt 1 failed: POST failed: 502 {"error":"write failed"}; sleep 1000ms
+  row 12300 attempt 2 failed: POST failed: 502 {"error":"write failed"}; sleep 2000ms
+  row 12300 attempt 3 failed: POST failed: 502 {"error":"write failed"}; sleep 4000ms
+  row 12300 attempt 4 failed: POST failed: 502 {"error":"write failed"}; sleep 8000ms
+  row 12300 attempt 5 failed: POST failed: 502 {"error":"write failed"}; sleep 16000ms
+  row 12300 GAVE UP after 5 attempts
+  row 15000: inserted=0 updated=150 (cum ins=1100 upd=13600)
+  row 16800 attempt 1 failed: POST failed: 502 {"error":"write failed"}; sleep 1000ms
+  row 16800 attempt 2 failed: POST failed: 502 {"error":"write failed"}; sleep 2000ms
+  row 16800 attempt 3 failed: POST failed: 502 {"error":"write failed"}; sleep 4000ms
+  row 16800 attempt 4 failed: POST failed: 502 {"error":"write failed"}; sleep 8000ms
+  row 16800 attempt 5 failed: POST failed: 502 {"error":"write failed"}; sleep 16000ms
+  row 16800 GAVE UP after 5 attempts
+  row 18750: inserted=0 updated=150 (cum ins=1450 upd=16850)
+  row 22500: inserted=0 updated=150 (cum ins=1450 upd=20600)
+  row 25350 attempt 1 failed: POST failed: 502 {"error":"write failed"}; sleep 1000ms
+  row 25350 attempt 2 failed: POST failed: 502 {"error":"write failed"}; sleep 2000ms
+  row 25350 attempt 3 failed: POST failed: 502 {"error":"write failed"}; sleep 4000ms
+  row 25350 attempt 4 failed: POST failed: 502 {"error":"write failed"}; sleep 8000ms
+  row 25350 attempt 5 failed: POST failed: 502 {"error":"write failed"}; sleep 16000ms
+  row 25350 GAVE UP after 5 attempts
+  row 26250: inserted=0 updated=150 (cum ins=1800 upd=23850)
+  row 27450 attempt 1 failed: POST failed: 502 {"error":"write failed"}; sleep 1000ms
+  row 27450 attempt 2 failed: POST failed: 502 {"error":"write failed"}; sleep 2000ms
+  row 27450 attempt 3 failed: POST failed: 502 {"error":"write failed"}; sleep 4000ms
+  row 27450 attempt 4 failed: POST failed: 502 {"error":"write failed"}; sleep 8000ms
+  row 27450 attempt 5 failed: POST failed: 502 {"error":"write failed"}; sleep 16000ms
+  row 27450 GAVE UP after 5 attempts
+  row 30000: inserted=0 updated=150 (cum ins=2200 upd=27050)
+  row 31050 attempt 1 failed: POST failed: 502 {"error":"write failed"}; sleep 1000ms
+  row 31050 attempt 2 failed: POST failed: 502 {"error":"write failed"}; sleep 2000ms
+  row 31050 attempt 3 failed: POST failed: 502 {"error":"write failed"}; sleep 4000ms
+  row 31050 attempt 4 failed: POST failed: 502 {"error":"write failed"}; sleep 8000ms
+  row 31050 attempt 5 failed: POST failed: 502 {"error":"write failed"}; sleep 16000ms
+  row 31050 GAVE UP after 5 attempts
+  row 31200 attempt 1 failed: POST failed: 502 {"error":"write failed"}; sleep 1000ms
+  row 31200 attempt 2 failed: POST failed: 502 {"error":"write failed"}; sleep 2000ms
+  row 31200 attempt 3 failed: POST failed: 502 {"error":"write failed"}; sleep 4000ms
+  row 31200 attempt 4 failed: POST failed: 502 {"error":"write failed"}; sleep 8000ms
+  row 31200 attempt 5 failed: POST failed: 502 {"error":"write failed"}; sleep 16000ms
+  row 31200 GAVE UP after 5 attempts
+  row 31500 attempt 1 failed: POST failed: 502 {"error":"write failed"}; sleep 1000ms
+  row 31500 attempt 2 failed: POST failed: 502 {"error":"write failed"}; sleep 2000ms
+  row 31500 attempt 3 failed: POST failed: 502 {"error":"write failed"}; sleep 4000ms
+  row 31500 attempt 4 failed: POST failed: 502 {"error":"write failed"}; sleep 8000ms
+  row 31500 attempt 5 failed: POST failed: 502 {"error":"write failed"}; sleep 16000ms
+  row 31500 GAVE UP after 5 attempts
+  row 31800 attempt 1 failed: POST failed: 502 {"error":"write failed"}; sleep 1000ms
+  row 31800 attempt 2 failed: POST failed: 502 {"error":"write failed"}; sleep 2000ms
+  row 31800 attempt 3 failed: POST failed: 502 {"error":"write failed"}; sleep 4000ms
+  row 31800 attempt 4 failed: POST failed: 502 {"error":"write failed"}; sleep 8000ms
+  row 31800 attempt 5 failed: POST failed: 502 {"error":"write failed"}; sleep 16000ms
+  row 31800 GAVE UP after 5 attempts
+  row 32100 attempt 1 failed: POST failed: 502 {"error":"write failed"}; sleep 1000ms
+  row 32100 attempt 2 failed: POST failed: 502 {"error":"write failed"}; sleep 2000ms
+  row 32100 attempt 3 failed: POST failed: 502 {"error":"write failed"}; sleep 4000ms
+  row 32100 attempt 4 failed: POST failed: 502 {"error":"write failed"}; sleep 8000ms
+  row 32100 attempt 5 failed: POST failed: 502 {"error":"write failed"}; sleep 16000ms
+  row 32100 GAVE UP after 5 attempts
+  row 32700 attempt 1 failed: POST failed: 502 {"error":"write failed"}; sleep 1000ms
+  row 32700 attempt 2 failed: POST failed: 502 {"error":"write failed"}; sleep 2000ms
+  row 32700 attempt 3 failed: POST failed: 502 {"error":"write failed"}; sleep 4000ms
+  row 32700 attempt 4 failed: POST failed: 502 {"error":"write failed"}; sleep 8000ms
+  row 32700 attempt 5 failed: POST failed: 502 {"error":"write failed"}; sleep 16000ms
+  row 32700 GAVE UP after 5 attempts
+  row 32850 attempt 1 failed: POST failed: 502 {"error":"write failed"}; sleep 1000ms
+  row 32850 attempt 2 failed: POST failed: 502 {"error":"write failed"}; sleep 2000ms
+  row 32850 attempt 3 failed: POST failed: 502 {"error":"write failed"}; sleep 4000ms
+  row 32850 attempt 4 failed: POST failed: 502 {"error":"write failed"}; sleep 8000ms
+  row 32850 attempt 5 failed: POST failed: 502 {"error":"write failed"}; sleep 16000ms
+  row 32850 GAVE UP after 5 attempts
+  row 33000: inserted=0 updated=105 (cum ins=3150 upd=28005)
+done: total inserted=3150 updated=28005 failures=1950
