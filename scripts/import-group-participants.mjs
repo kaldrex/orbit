@@ -19,8 +19,15 @@ const CYPHER = readFileSync(
 export async function importGroupParticipants({ db, runCypher, resolvePerson }) {
   resolvePerson = resolvePerson || ((jid) => jid);
 
+  // wacli real schema uses `user_jid`; we kept a fallback for older
+  // fixtures that used `member_jid`.
+  const colInfo = db.prepare("PRAGMA table_info(group_participants)").all();
+  const col = colInfo.some((c) => c.name === "user_jid")
+    ? "user_jid"
+    : "member_jid";
+
   const rows = db
-    .prepare(`SELECT group_jid, member_jid FROM group_participants ORDER BY group_jid`)
+    .prepare(`SELECT group_jid, ${col} AS member_jid FROM group_participants ORDER BY group_jid`)
     .all();
 
   const groups = new Map();
