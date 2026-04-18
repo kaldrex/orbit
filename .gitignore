@@ -46,3 +46,7 @@ next-env.d.ts
 # SQLite WAL / SHM sidecars — only commit the committed .db
 *.db-wal
 *.db-shm
+.env*.local
+
+# Supabase CLI local cache (project-ref, pooler-url, version pins)
+/supabase/.temp/
