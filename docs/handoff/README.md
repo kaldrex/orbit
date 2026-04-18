@@ -1,21 +1,27 @@
 # Orbit v2 Handoff — Next-Session Entry Point
 
-## Start here
+## 👉 Start here (newest first)
 
-Orbit is live end-to-end. Plugin installed on Wazowski, ingesting WhatsApp/Calendar/Gmail/Linear, graph at 1,003 persons and 9,153 INTERACTED edges. Web dashboard shows real data.
+**The canonical resume point is [`09-2026-04-18-track2-done.md`](./09-2026-04-18-track2-done.md).** Read that first — it tells you where we are, what's live, and exactly what to do next.
 
-**BUT** — 93% of contacts have score < 2, 90% are category "other", 10 confirmed duplicate clusters, and the whole categorization/identity-resolution layer is effectively useless. This handoff folder tells the next session what to fix.
+Everything below is older context, kept for reference. The architecture landed in the 2026-04-18 specs under [`docs/superpowers/specs/`](../superpowers/specs/) supersedes any "next step" advice in `03-problems.md` / `04-next-steps.md`.
 
-## Read in order
+## Reading order (if starting from zero)
 
-1. **`01-system-overview.md`** — How the whole thing works today: plugin → API → Neo4j → dashboard. Where each piece lives, what it does, who pays.
-2. **`02-live-state.md`** — Current numbers, credentials, deployment locations. Facts you need to verify anything.
-3. **`03-problems.md`** — Every issue the 3 audit subagents found. Grouped by severity. This is the backlog.
-4. **`04-next-steps.md`** — Priority-ordered fix plan. Start at the top.
+1. **[`09-2026-04-18-track2-done.md`](./09-2026-04-18-track2-done.md)** — Current state of the world (Track 1 + 2 done, 33 k rows in ledger, Track 3 is next).
+2. **[`../superpowers/specs/2026-04-18-orbit-v0-design.md`](../superpowers/specs/2026-04-18-orbit-v0-design.md)** — Canonical architecture. Three durable layers, observation feedback loop, V0 scope.
+3. **[`../superpowers/specs/2026-04-18-testing-and-verification.md`](../superpowers/specs/2026-04-18-testing-and-verification.md)** — Testing contract. "No claim without evidence."
+4. **[`../superpowers/plans/2026-04-18-orbit-v0-master-roadmap.md`](../superpowers/plans/2026-04-18-orbit-v0-master-roadmap.md)** — 6-track execution plan with current checkboxes.
+5. **[`../../outputs/verification-log.md`](../../outputs/verification-log.md)** — Every claim about the system backed by an artifact. Read when something looks off and you need to know what's actually true.
 
-## The one problem to fix first
+## Older context (pre-2026-04-18, now superseded)
 
-**Canonical identity resolution.** Ramon appears 3 times, Eric 3 times, Suhas 2 times, Ashutosh 2 times. Without merging, every query returns garbage. The data science team built a rule-based resolver (`CanonicalNameResolver` in `orbit-experiment/intelligence_layer.py`) but it's never been ported to TypeScript or run against production data. An LLM-powered pass is the right approach — we designed it last session. Details in `04-next-steps.md`.
+- `01-system-overview.md` — how the system worked before the inverted-storage design
+- `02-live-state.md` — older credentials/deploy snapshot
+- `03-problems.md` — pre-spec backlog; most items absorbed into the 6-track plan
+- `04-next-steps.md` — pre-spec next steps; use the master roadmap instead
+- `05-neutral-handover.md`, `06-openclaw-orbit-universal-system.md`, `07-openclaw-runtime-reference.md` — architecture context, still useful for background
+- `08-senior-engineer-dump-2026-04-17.md` — one day before the spec was written; good "why" context for the inversion
 
 ## Quick verify commands
 
