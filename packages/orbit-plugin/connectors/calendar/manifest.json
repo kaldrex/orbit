@@ -1,7 +1,0 @@
-{
-  "name": "calendar",
-  "displayName": "Google Calendar",
-  "mode": "batch",
-  "pollIntervalHours": 2,
-  "cliCommand": "gws calendar"
-}
