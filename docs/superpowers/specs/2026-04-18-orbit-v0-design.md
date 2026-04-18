@@ -54,22 +54,35 @@
 
 ## 3. Classification rules (first-match-wins)
 
-Same rules run for every founder. Personalization comes from whose data flows through. The `family` rule uses the founder's own surname as input; the `teammate` rule uses their own email domain — automatic adaptation, zero config.
+Same rules run for every founder. Personalization comes from whose data flows through. Self/family use the founder's own identifiers; teammate uses their email domain — automatic adaptation, zero config.
 
-| # | Rule | Test |
-|---|---|---|
-| 1 | Self | Matches the founder's own identifiers |
-| 2 | Family | Surname token matches the founder's surname |
-| 3 | Automated | Name/email contains `noreply / support / alerts / system / mailer` |
-| 4 | Service | Domain in known list (hdfc, amazon, uber, razorpay, jio, stripe, ...) |
-| 5 | Investor | Domain in VC list (a16z, sequoia, accel, lightspeed, peakxv, ...) |
-| 6 | Press | Domain in media list (economictimes, ndtv, techcrunch, ...) |
-| 7 | Teammate | Same email domain as the founder |
-| 8 | Peer | Personal domain + 2-way WA + ≥3 msgs |
-| 9 | Acquaintance | Sparse: 1 msg, no reply |
-| 10 | → LLM | Nothing matched |
+**Rules output the canonical UI category keys** defined in [`src/lib/graph-transforms.ts`](../../../src/lib/graph-transforms.ts) `CATEGORY_META`:
+`self, team, investor, sponsor, fellow, media, community, gov, founder, friend, press, other`.
 
-Rules fire in order; first match wins. Validated on Sanchay's data: rules covered 98.8% of active persons, LLM fallback needed for ~20% of fine-grained distinctions.
+| # | Rule | Test | UI category |
+|---|---|---|---|
+| 1 | Self | Matches the founder's own identifiers (phone, email, name) | `self` |
+| 2 | Teammate | Same email domain as the founder | `team` |
+| 3 | Investor | Domain ∈ VC list (a16z, sequoia, accel, lightspeed, peakxv, blume, matrix, nexusvp, kalaari, chiratae, …) | `investor` |
+| 4 | Press | Domain ∈ media list (economictimes, ndtv, techcrunch, theverge, hindustan, yourstory, …) | `press` |
+| 5 | Government | Domain suffix `.gov.in`, `.gov`, `nic.in`; title contains "minister/secretary/officer" | `gov` |
+| 6 | Media | Domain in extended publisher list (blogs, podcast hosts, newsletter platforms) | `media` |
+| 7 | Community | Name/email tied to communities/DAOs/meetups in founder's graph | `community` |
+| 8 | Sponsor | Explicit sponsor-relationship domains (fellowship sponsors, corporate patrons) | `sponsor` |
+| 9 | Fellow | Explicit fellowship cohorts (On Deck, YC, Antler, South Park Commons, etc.) | `fellow` |
+| 10 | Family | Surname token matches the founder's surname | `friend` |
+| 11 | Founder | Personal domain + founder-signal keywords ("CEO/cofounder/founder" in signature) + 2-way | `founder` |
+| 12 | Friend | Personal domain + 2-way WhatsApp + ≥3 msgs, no stronger signal | `friend` |
+| 13 | Automated | Name/email contains `noreply/support/alerts/system/mailer` OR List-Unsubscribe header | `other` (filtered from main graph) |
+| 14 | Service | Domain ∈ bank/ecom/utility/telco list (hdfc, amazon, uber, razorpay, jio, …) | `other` (filtered from main graph) |
+| 15 | Acquaintance | Sparse signal: 1 msg, no reply, no stronger rule hit | `other` |
+| 16 | → **LLM fallback** | Nothing above matched | One of the 12 UI keys |
+
+Rules fire in order; first match wins. Validated on Sanchay's data (hypothesis-test v3): rules 1/2/3/4/10/11/12 covered 98.8% of active persons; rules 5/6/7/8/9 are ready but produced 0 hits in this test dataset (no VC/press/gov/fellow/sponsor presence in 12-mo Gmail window) — that's a data property, not a rule gap.
+
+**UI behavior for `other`:** `isJunkName` in `graph-transforms.ts` already hides bare-phone/email-as-name nodes. Category=`other` nodes without a usable name go to the side bucket ("Needs Review"), not the main graph.
+
+**LLM fallback (rule 16)** handles the remaining ~1-5% with the universal prompt: *"Classify this person into one of `{team, investor, sponsor, fellow, media, community, gov, founder, friend, press, other}` using this evidence."* Result is stored as `segment` with confidence + source for the observation trail.
 
 ---
 
