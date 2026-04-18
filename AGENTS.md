@@ -1,5 +1,5 @@
-<!-- BEGIN:nextjs-agent-rules -->
-# This is NOT the Next.js you know
+# AGENTS.md
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
-<!-- END:nextjs-agent-rules -->
+This repo is configured for **Claude Code**. The authoritative agent-context file is [CLAUDE.md](./CLAUDE.md).
+
+If you're running a different harness (Codex, OpenCode, Zed, Cursor, etc.), read [CLAUDE.md](./CLAUDE.md) and treat it as your `AGENTS.md`. Deeper context lives in [agent-docs/](./agent-docs/) — load on demand per the index at [agent-docs/README.md](./agent-docs/README.md).
