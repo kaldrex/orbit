@@ -42,3 +42,7 @@ next-env.d.ts
 
 # verification harness snapshots (kept locally only)
 /.verify-runs/
+
+# SQLite WAL / SHM sidecars — only commit the committed .db
+*.db-wal
+*.db-shm

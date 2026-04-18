@@ -1,0 +1,251 @@
+{
+  "generated_at": "2026-04-18",
+  "source": "hypothesis-test-20260418-v3-synthetic",
+  "pairs": [
+    {
+      "lid": "11111111@lid",
+      "phone": "+919100000000",
+      "confidence": 0.85,
+      "reason": "google_contacts_name_token",
+      "synthetic": true
+    },
+    {
+      "lid": "11111118@lid",
+      "phone": "+919100000001",
+      "confidence": 0.9,
+      "reason": "group_cooccurrence_strong",
+      "synthetic": true
+    },
+    {
+      "lid": "11111125@lid",
+      "phone": "+919100000002",
+      "confidence": 0.95,
+      "reason": "push_name_correlation",
+      "synthetic": true
+    },
+    {
+      "lid": "11111132@lid",
+      "phone": "+919100000003",
+      "confidence": 0.85,
+      "reason": "three_token_name_match",
+      "synthetic": true
+    },
+    {
+      "lid": "11111139@lid",
+      "phone": "+919100000004",
+      "confidence": 0.9,
+      "reason": "google_contacts_name_token",
+      "synthetic": true
+    },
+    {
+      "lid": "11111146@lid",
+      "phone": "+919100000005",
+      "confidence": 0.95,
+      "reason": "group_cooccurrence_strong",
+      "synthetic": true
+    },
+    {
+      "lid": "11111153@lid",
+      "phone": "+919100000006",
+      "confidence": 0.85,
+      "reason": "push_name_correlation",
+      "synthetic": true
+    },
+    {
+      "lid": "11111160@lid",
+      "phone": "+919100000007",
+      "confidence": 0.9,
+      "reason": "three_token_name_match",
+      "synthetic": true
+    },
+    {
+      "lid": "11111167@lid",
+      "phone": "+919100000008",
+      "confidence": 0.95,
+      "reason": "google_contacts_name_token",
+      "synthetic": true
+    },
+    {
+      "lid": "11111174@lid",
+      "phone": "+919100000009",
+      "confidence": 0.85,
+      "reason": "group_cooccurrence_strong",
+      "synthetic": true
+    },
+    {
+      "lid": "11111181@lid",
+      "phone": "+919100000010",
+      "confidence": 0.9,
+      "reason": "push_name_correlation",
+      "synthetic": true
+    },
+    {
+      "lid": "11111188@lid",
+      "phone": "+919100000011",
+      "confidence": 0.95,
+      "reason": "three_token_name_match",
+      "synthetic": true
+    },
+    {
+      "lid": "11111195@lid",
+      "phone": "+919100000012",
+      "confidence": 0.85,
+      "reason": "google_contacts_name_token",
+      "synthetic": true
+    },
+    {
+      "lid": "11111202@lid",
+      "phone": "+919100000013",
+      "confidence": 0.9,
+      "reason": "group_cooccurrence_strong",
+      "synthetic": true
+    },
+    {
+      "lid": "11111209@lid",
+      "phone": "+919100000014",
+      "confidence": 0.95,
+      "reason": "push_name_correlation",
+      "synthetic": true
+    },
+    {
+      "lid": "11111216@lid",
+      "phone": "+919100000015",
+      "confidence": 0.85,
+      "reason": "three_token_name_match",
+      "synthetic": true
+    },
+    {
+      "lid": "11111223@lid",
+      "phone": "+919100000016",
+      "confidence": 0.9,
+      "reason": "google_contacts_name_token",
+      "synthetic": true
+    },
+    {
+      "lid": "11111230@lid",
+      "phone": "+919100000017",
+      "confidence": 0.95,
+      "reason": "group_cooccurrence_strong",
+      "synthetic": true
+    },
+    {
+      "lid": "11111237@lid",
+      "phone": "+919100000018",
+      "confidence": 0.85,
+      "reason": "push_name_correlation",
+      "synthetic": true
+    },
+    {
+      "lid": "11111244@lid",
+      "phone": "+919100000019",
+      "confidence": 0.9,
+      "reason": "three_token_name_match",
+      "synthetic": true
+    },
+    {
+      "lid": "11111251@lid",
+      "phone": "+919100000020",
+      "confidence": 0.95,
+      "reason": "google_contacts_name_token",
+      "synthetic": true
+    },
+    {
+      "lid": "11111258@lid",
+      "phone": "+919100000021",
+      "confidence": 0.85,
+      "reason": "group_cooccurrence_strong",
+      "synthetic": true
+    },
+    {
+      "lid": "11111265@lid",
+      "phone": "+919100000022",
+      "confidence": 0.9,
+      "reason": "push_name_correlation",
+      "synthetic": true
+    },
+    {
+      "lid": "11111272@lid",
+      "phone": "+919100000023",
+      "confidence": 0.95,
+      "reason": "three_token_name_match",
+      "synthetic": true
+    },
+    {
+      "lid": "11111279@lid",
+      "phone": "+919100000024",
+      "confidence": 0.85,
+      "reason": "google_contacts_name_token",
+      "synthetic": true
+    },
+    {
+      "lid": "11111286@lid",
+      "phone": "+919100000025",
+      "confidence": 0.9,
+      "reason": "group_cooccurrence_strong",
+      "synthetic": true
+    },
+    {
+      "lid": "11111293@lid",
+      "phone": "+919100000026",
+      "confidence": 0.95,
+      "reason": "push_name_correlation",
+      "synthetic": true
+    },
+    {
+      "lid": "11111300@lid",
+      "phone": "+919100000027",
+      "confidence": 0.85,
+      "reason": "three_token_name_match",
+      "synthetic": true
+    },
+    {
+      "lid": "11111307@lid",
+      "phone": "+919100000028",
+      "confidence": 0.9,
+      "reason": "google_contacts_name_token",
+      "synthetic": true
+    },
+    {
+      "lid": "11111314@lid",
+      "phone": "+919100000029",
+      "confidence": 0.95,
+      "reason": "group_cooccurrence_strong",
+      "synthetic": true
+    },
+    {
+      "lid": "11111321@lid",
+      "phone": "+919100000030",
+      "confidence": 0.85,
+      "reason": "push_name_correlation",
+      "synthetic": true
+    },
+    {
+      "lid": "11111328@lid",
+      "phone": "+919100000031",
+      "confidence": 0.9,
+      "reason": "three_token_name_match",
+      "synthetic": true
+    },
+    {
+      "lid": "11111335@lid",
+      "phone": "+919100000032",
+      "confidence": 0.95,
+      "reason": "google_contacts_name_token",
+      "synthetic": true
+    },
+    {
+      "lid": "11111342@lid",
+      "phone": "+919100000033",
+      "confidence": 0.85,
+      "reason": "group_cooccurrence_strong",
+      "synthetic": true
+    },
+    {
+      "lid": "11111349@lid",
+      "phone": "+919100000034",
+      "confidence": 0.9,
+      "reason": "push_name_correlation",
+      "synthetic": true
+    }
+  ]
+}
