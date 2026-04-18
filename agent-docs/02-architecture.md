@@ -90,10 +90,41 @@ Full table: [design spec §8](../docs/superpowers/specs/2026-04-18-orbit-v0-desi
 ## Tech stack
 
 - **Frontend + backend:** Next.js 16 (App Router, RSC, Turbopack). See the warning in [CLAUDE.md](../CLAUDE.md) — breaking changes from older Next versions; read `node_modules/next/dist/docs/` before writing route code.
-- **Database:** Supabase Postgres (ledger, auth, observations). Connection strings in `.env.local`. Migrations applied via Supabase Management API, not via `supabase migration new` files.
+- **Database:** Supabase Postgres (ledger, auth, observations). Connection strings in `.env.local`. Migration flow in [06-operating.md](./06-operating.md).
 - **Graph:** Neo4j Aura (persons + edges). Currently empty; Track 3.2 repopulates from `interactions`.
 - **Auth:** Supabase session cookies for UI; agent API keys for plugin. Primitives in [src/lib/api-auth.ts](../src/lib/api-auth.ts).
 - **Tests:** Vitest. 26 tests, ~1s full suite. `npm test`.
+
+## Infrastructure touchpoints
+
+Three external services. Each has a gotcha worth knowing before you open a connection.
+
+### Supabase Postgres
+
+- **RLS is on for `raw_events`.** Policies allow `auth.uid() = user_id` for SELECT + INSERT. A client-side query using the anon key returns empty silently if the user isn't authenticated. The ledger route in [src/app/api/v1/raw_events/route.ts](../src/app/api/v1/raw_events/route.ts) bypasses this by calling the `upsert_raw_events` RPC with the server-resolved `userId` after `getAgentOrSessionAuth`.
+- **Two connection paths.** Scripts use `SUPABASE_DB_URL` (pooler, direct `psql`/`pg`). Routes use the Supabase JS client with `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Pick based on context.
+
+### Neo4j Aura
+
+- **Env vars have literal `\n` suffixes** in Vercel prod (`NEO4J_URI`, `NEO4J_USER`, `NEO4J_DATABASE`). Every caller must `.trim()` them. Missing the trim produces cryptic driver errors.
+- **Driver usage pattern:**
+  ```js
+  import neo4j from "neo4j-driver";
+  const uri = process.env.NEO4J_URI.trim();
+  const driver = neo4j.driver(uri, neo4j.auth.basic(
+    process.env.NEO4J_USER.trim(),
+    process.env.NEO4J_PASSWORD,
+  ));
+  const session = driver.session({ database: (process.env.NEO4J_DATABASE || "neo4j").trim() });
+  try { /* await session.run("MATCH ...") */ } finally { await session.close(); await driver.close(); }
+  ```
+- **No driver helpers in repo right now.** Track 3.2 adds the projection; that's where the permanent pattern will live.
+
+### OpenClaw plugin runtime
+
+- **Runtime:** `openclaw-gateway` systemd user service on the founder's machine. Currently stopped on claw post-prune.
+- **Plugin install location:** `~/.openclaw/plugins/<plugin-name>/` with an `openclaw.plugin.json` manifest + an `index.js` that uses `definePluginEntry` from the `openclaw` npm package (globally installed at `/opt/homebrew/lib/node_modules/openclaw/dist/` on Mac, `/usr/lib/node_modules/openclaw/dist/` on Linux).
+- **Historical reference:** the deleted `packages/orbit-plugin/` and `packages/openclaw-plugin/` had working manifest + plugin-entry code. Retrieve them if you need a scaffold: `git show bfb861e:packages/orbit-plugin/openclaw.plugin.json` and `git show bfb861e:packages/openclaw-plugin/index.js`. Use them as a starting point for Track 2.5's fresh plugin — then delete the scaffold and write clean, protocol-faithful code against the three contracts.
 
 ## Further reading
 

@@ -55,6 +55,20 @@ Writing "I'm about to do X" is not doing X. State what's true after the action, 
 
 When in doubt, stop and ask. The cost of pausing is low; the cost of an unwanted action can erase days of work.
 
+## Applying a Supabase migration
+
+There is no `supabase/migrations/` directory in this repo by convention. DDL is applied directly, one of two ways:
+
+1. **Direct `psql` (preferred for dev + new migrations).** `psql "$SUPABASE_DB_URL" -f path/to/migration.sql`. `SUPABASE_DB_URL` in `.env.local` is the pooler connection string (username includes the project ref). This is how the `raw_events` table + `upsert_raw_events` RPC landed on 2026-04-18. Same path applies for any additive DDL (new tables, views, indexes, functions).
+2. **Management API (for scripted/CI flows).** `POST https://api.supabase.com/v1/projects/<project-ref>/database/query` with header `Authorization: Bearer $SUPABASE_ACCESS_TOKEN` and JSON body `{"query": "<sql>"}`. Project ref is the subdomain of `NEXT_PUBLIC_SUPABASE_URL` (e.g. `xrfcmjllsotkwxxkfamb` from `https://xrfcmjllsotkwxxkfamb.supabase.co`).
+
+After any DDL change, immediately: (a) commit the `.sql` file under `scripts/migrations/<NNN>-name.sql` as a runnable artifact; (b) run `psql "$SUPABASE_DB_URL" -c "\d <new_table>"` (or equivalent) to confirm; (c) append a verification-log row. **Never run a destructive `DROP` or `TRUNCATE` without explicit go** — that's the authorities boundary above.
+
+## Deploying to Vercel + the claw plugin
+
+- **Vercel prod** auto-deploys on `git push origin main`. No manual step. URL: `orbit-mu-roan.vercel.app`. Rollback: `vercel rollback <previous-deployment-id>` (do the rehearsal once before you need it — CC-4 in the roadmap).
+- **Claw VM** is reachable as `ssh claw` — the host entry lives in the founder's local `~/.ssh/config`, not in-repo. User is `sanchay`; plugins live under `~/.openclaw/plugins/`. After deploying a new plugin: `systemctl --user restart openclaw-gateway.service` and tail `journalctl --user -u openclaw-gateway -f` to confirm it boots clean.
+
 ## Verification log format
 
 Every claim-worthy action lands a row in [outputs/verification-log.md](../outputs/verification-log.md) using this shape:
