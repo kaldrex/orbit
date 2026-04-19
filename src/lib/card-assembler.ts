@@ -6,6 +6,29 @@ import type {
 } from "./observations-schema";
 
 /**
+ * Shared-token Jaccard score. Used to reject near-duplicate summary
+ * fragments when building one_paragraph_summary — we don't want the
+ * latest interaction summary to echo relationship_to_me verbatim.
+ */
+function isSimilar(a: string, b: string, threshold = 0.5): boolean {
+  const tokenize = (s: string) =>
+    new Set(
+      s
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .split(/\s+/)
+        .filter((t) => t.length > 3),
+    );
+  const ta = tokenize(a);
+  const tb = tokenize(b);
+  if (ta.size === 0 || tb.size === 0) return false;
+  let shared = 0;
+  for (const t of ta) if (tb.has(t)) shared++;
+  const jaccard = shared / (ta.size + tb.size - shared);
+  return jaccard >= threshold;
+}
+
+/**
  * The shape consumed by UI + agent reads. V0 card is minimal by design
  * per plan decision D — grow the card from what an honest first pass
  * actually produces, don't pre-commit to a large schema.
@@ -169,14 +192,18 @@ export function assembleCard(
     // included (handled by the caller's filter).
   }
 
-  // Build a short summary: prefer relationship_to_me; append the most
-  // recent interaction summary if it fits and isn't redundant.
+  // The summary is the founder-facing one-liner. Prefer relationship_to_me
+  // as-is. Append the most recent interaction summary only if it adds real
+  // information (not a near-duplicate of relationship_to_me).
   const recentInteraction = interactions.length
     ? interactions[interactions.length - 1].summary
     : "";
-  const one_paragraph_summary = [relationship_to_me, recentInteraction]
-    .filter((s) => s && s.length > 0)
-    .join(" · ");
+  const parts: string[] = [];
+  if (relationship_to_me) parts.push(relationship_to_me);
+  if (recentInteraction && !isSimilar(relationship_to_me, recentInteraction)) {
+    parts.push(recentInteraction);
+  }
+  const one_paragraph_summary = parts.join(" · ");
 
   return {
     person_id: personId,
