@@ -12,6 +12,7 @@ These docs extend [CLAUDE.md](../CLAUDE.md). They're loaded on demand — decide
 | [04-roadmap.md](./04-roadmap.md) | Planning work; deciding what to ship next | tracks · dependencies · T3 sub-tasks · T2.5 |
 | [05-golden-packets.md](./05-golden-packets.md) | Implementing Track 3 — packet assembler or `/packet` route | diff contract · fixtures · schema · Imran/Aryan/Hardeep |
 | [06-operating.md](./06-operating.md) | Before any risky action; writing commits; running destructive ops | rules of engagement · standing authorities · verification log · commit template |
+| [09-data-gathering-handoff.md](./09-data-gathering-handoff.md) | Starting the data-gathering EDA session; before SSH'ing the claw VM | claw VM · first_time_ingestion · 1% ceiling · seed identity · LLM-forward EDA |
 
 ## How these relate to `docs/superpowers/`
 
