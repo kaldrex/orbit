@@ -1,0 +1,11 @@
+                  id                  |    kind     |                                                           evidence_pointer                                                           | confidence |        observed_at         
+--------------------------------------+-------------+--------------------------------------------------------------------------------------------------------------------------------------+------------+----------------------------
+ 35b21655-cfaa-4a80-8041-130a9335f4e1 | interaction | gmail://message-id/<CAPAR3sQRhsA6CAKFLk7bawjUw_ZtdbrF+uLhY4GJbnjtoCWZ4g@mail.gmail.com>                                              |      0.950 | 2025-02-13 12:01:16+00
+ bb7ac3f0-115e-4682-b85f-02cb2b6324d7 | interaction | gmail://message-id/<CAJgyvyB1DD8jjLTt-Oecc0WUUxPDORZG=VgLqs26Mmdkd_Beyg@mail.gmail.com>                                              |      0.950 | 2025-05-15 05:28:02+00
+ fcbeefdd-87e5-4379-b08d-b30f86878ad3 | interaction | gmail://message-id/<CAJgyvyA=P_Yr7=3jWCttfUMKWJjzYZVZrUa6uO=cSLDxX7Fn2A@mail.gmail.com>                                              |      0.950 | 2025-12-27 17:31:46+00
+ 35857d4b-24e9-42da-82f3-c229e4fc2fc6 | interaction | wacli://messages/chat=971586783040@s.whatsapp.net                                                                                    |      0.950 | 2026-04-16 16:45:57+00
+ 6db7ea97-3521-428d-abd9-098865b429cc | person      | wacli://contacts/jid=971586783040@s.whatsapp.net                                                                                     |      0.950 | 2026-04-19 08:22:00+00
+ e7afd7f4-6ce3-4b8a-b696-66f96cb7fa39 | merge       | merge://phone:+971586783040+email:usheik@sinxsolutions.ai+email:usheik@weddingdai.com+email:umayrsheik@gmail.com+lid:207283862659127 |      1.000 | 2026-04-19 08:35:00+00
+ 9fa01b39-ba65-4e4c-94d0-d7a0491fc7d3 | correction  | human://telegram/1776588232377                                                                                                       |      1.000 | 2026-04-19 08:43:52.377+00
+(7 rows)
+
