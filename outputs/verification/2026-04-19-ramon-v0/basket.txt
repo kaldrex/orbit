@@ -1,0 +1,9 @@
+                  id                  |    kind     | confidence |      observed_at       |                                        ep                                        
+--------------------------------------+-------------+------------+------------------------+----------------------------------------------------------------------------------
+ c65490fd-0e06-44bf-979f-35d6820dc8a7 | interaction |      0.950 | 2026-02-03 19:43:19+00 | gmail://message-id/<CAEyiHkU9viRKSPyrR2F7t5nneM=ukof7wmL0Nq9sYYpPx9nrGQ@mail.gma
+ 04c12804-18a5-492b-bbbb-4405c1553e08 | interaction |      0.950 | 2026-03-09 15:30:45+00 | gmail://message-id/<calendar-4dadc5be-f2b0-42b1-b24e-9bd12c804dc9@google.com>
+ 3ee90a22-9e6d-4e6e-af65-14eec38e2d07 | interaction |      0.950 | 2026-04-16 03:06:54+00 | wacli://messages/chat=17874244135@s.whatsapp.net
+ 9c947158-bc56-4d50-a815-da635a38ae01 | person      |      0.950 | 2026-04-19 08:46:00+00 | wacli://contacts/jid=17874244135@s.whatsapp.net
+ 8fdf3f98-0c66-4ff2-ac7a-f66de7250b6d | merge       |      1.000 | 2026-04-19 08:50:00+00 | merge://phone:+17874244135+phone:+13057974114+email:ramongberrios@gmail.com+lid:
+(5 rows)
+
