@@ -4,54 +4,63 @@
 
 ## Who this is for
 
-**Founders.** One human, dozens of active relationships, five to seven channels where those relationships actually happen (WhatsApp, Gmail, Calendar, Slack, Linear, and whatever comes next). Every CRM pretends one person is one row. No CRM on the market lets a founder answer "what do I actually know about Imran, across everything, right now?" without staring at six tabs.
+**Founders.** One human holding 30–150 active relationships across five to seven channels where those relationships actually happen — WhatsApp, Gmail, Google Workspace, Calendar, Slack, Linear, whatever comes next. Every CRM on the market pretends one person is one row per source. No tool available today lets a founder answer *"what do I actually know about Imran, across everything, right now?"* without staring at six tabs.
 
 Orbit is that answer.
 
 ## The three-way loop
 
-Orbit is one half of a two-part system. The other half is **OpenClaw**, an agent runtime that lives on the founder's machine and owns real channel connections.
+Orbit is one half of a two-part system. The other half is **OpenClaw**, an agent runtime that lives on the founder's own machine and holds the channel credentials. **Every founder brings their own OpenClaw** — their VM, their install, their LLM budget. OpenClaw owns the hands; Orbit owns the memory.
 
 ```
-           HUMAN (the trigger)
-              │
-              ▼
-          OpenClaw ◀─────────── Orbit
-          (hands)                (memory)
-              │                    ▲
-              │                    │
-              └── observations ────┘
+             HUMAN (the trigger)
+                │
+                ▼
+            OpenClaw ◀──── Orbit
+          (founder's agent) (memory)
+                │              ▲
+                │              │
+                └── events ────┘
+                  + observations
 ```
 
-- **OpenClaw (hands)** — channel access, real-time acquisition, per-query reasoning, drafts, scheduling. Runs locally. Uses the founder's own LLM budget.
-- **Orbit (memory)** — canonical people, identity resolution, cross-channel interactions, LLM-enriched summaries, the founder-facing UI. Runs hosted.
-- **The human (trigger)** — every action the founder takes, or asks their agent to take, generates new signal. No activity, no compounding.
+- **Orbit (memory)** — hosted. Canonical persons, cross-channel identity resolution, a graph of relationships, a typed history of agent observations. Humans log in to browse it. Agents call its APIs to read structured packets and write back learnings.
+- **OpenClaw (hands)** — local to the founder. Owns channel connections via plugin CLIs (`wacli`, `gws`, etc.). Does real work — drafts, prep briefs, search — using the packet as input. Uses the founder's own LLM budget.
+- **The human** — triggers everything. Every task they do or delegate generates signal. No triggers, no compounding.
 
-## Why inverted storage
+Orbit is **not** the backend of one specific agent. It's the neutral surface where the human (via browser) and the agent (via API) both arrive. Each founder's data, each founder's agent, each founder's memory.
 
-Today's CRMs and "relationship graphs" go source → graph, one shot. Schema changes or new rules = reimport from source. That's expensive, slow, and loses audit data.
+## Why Orbit pre-computes
 
-Orbit inverts: `raw_events` is the immutable ledger. Everything downstream (`interactions`, `persons`, the Neo4j graph, the packet cache) is a **rebuildable projection**. Add a field, change a rule, fix a classifier — rebuild from the ledger, don't re-fetch from Gmail. See [docs/superpowers/specs/2026-04-18-orbit-v0-design.md §2](../docs/superpowers/specs/2026-04-18-orbit-v0-design.md).
+OpenClaw *could* re-derive a person's state on every query — pull from Gmail, scan WhatsApp, stitch it together live. It has the tools. But that's slow and expensive every time the founder asks.
+
+Orbit's job is to be **insanely good at storing and serving structured relationship data** so OpenClaw's answer to "what do I know about Imran" is a packet read, not a re-analysis. The rich reasoning happens once (during ingestion, or when new signal arrives) and Orbit caches the result.
+
+This also sets the division of labor: **all LLM work lives on OpenClaw's side, on the founder's own budget.** Orbit does deterministic server-side processing — identity resolution, dedup, joins, quality checks, rule tools. No hosted LLM cost. No per-query LLM cost. Orbit serves pre-computed memory.
 
 ## Why the observation loop is the moat
 
-A static relationship graph is a commodity — Clay, Attio, Affinity all get there. What compounds is **observations**: every time an OpenClaw agent does work for the human, it writes back what it learned. Tone corrections. Segment hints. "This person is going cold." "These two records are the same human." "The founder's reply style is terser with investors."
+A static relationship graph is a commodity — Clay, Attio, Affinity all get there. What compounds is **observations**: every time OpenClaw does work for the human, it writes back what it learned. Tone corrections. Segment hints. "This person is going cold." "These two records are the same human." "The founder is terser with investors." "The user said Aryan isn't cold, he's on vacation."
 
-Each observation is one timestamped, confidence-scored row. Over months, the memory specifically adapts to this founder's world. That adaptation is hard to replicate and hard to leave.
+Each observation is one timestamped, confidence-scored, source-attributed record. Over months, the memory specifically adapts to this founder's world. That adaptation is hard to replicate and hard to leave.
 
 **Without observations, Orbit is a nice address book. With them, it's defensible.**
 
-### The mechanics (post-V0 vision)
-
-The full story isn't just "observations compound." It's a three-tier system: **rules produce evidence packets** (messaging pattern, group co-presence, platform absence, calendar overlap, email-header signals, identity conflict evidence); **Orbit-side LLM reads evidence — not raw data** — and writes enriched packet fields (`recent_topics`, `outstanding_action_items`, `tone`); **OpenClaw-side LLM** reads packets for per-query work (drafts, prep, search). Cluster-first identity mapping (resolve the group-co-presence clusters first, use A's classification to inform B's) is the long-term shape. Track 4 is the first step; the full architecture is in [docs/archive/data-science/BRAINSTORM-intelligence-redesign.md](../docs/archive/data-science/BRAINSTORM-intelligence-redesign.md).
-
-### The gap Imran's packet is evidence we can close
-
-Cross-source identity resolution was at **~1%** before the 12-month Gmail widening — most Gmail senders never linked to WA contacts. [Imran's packet](../tests/fixtures/golden-packets/person_packet_imran.json) (1 phone + 2 emails → 1 person) is the first real proof the name-waterfall + merge rules can actually bridge channels. The breakthrough is fragile — the Google Contacts `contacts.other.readonly` scope (deferred per [design spec §10](../docs/superpowers/specs/2026-04-18-orbit-v0-design.md)) is what makes it robust at scale (2–3× the cross-source match rate). Don't treat cross-source resolution as solved; it's the hard problem and the one the product lives or dies on. Historical analysis in [docs/archive/data-science/REPORT.md](../docs/archive/data-science/REPORT.md).
+Observations include **corrections from the human**, not just inferences from the agent. A user correction is a first-class observation kind, carrying higher trust than an LLM guess. Even before we build a correction UI, the data model treats that kind as real — adding observation kinds later is painful.
 
 ## The unit of value: the person packet
 
-Not the graph. Not the feed. **One structured JSON record per human**, combining cross-channel presence, relationship state, open questions, and LLM-enriched context. Three canonical shapes are committed at [tests/fixtures/golden-packets/](../tests/fixtures/golden-packets/). Track 3's assembler must diff-clean against those. See [05-golden-packets.md](./05-golden-packets.md).
+Not the graph. Not the feed. **One structured JSON record per human**, assembled by joining the graph layer + latest observations on read.
+
+The packet is the **response contract** OpenClaw and the UI both consume. Its shape is stable (identity, channels, relationship, segment, context, optionally narrative + known-others). What's *in* it evolves as the underlying graph and observations grow.
+
+The three fixtures in [tests/fixtures/golden-packets/](../tests/fixtures/golden-packets/) — Imran, Aryan, Hardeep — are **examples of the packet shape**, not acceptance contracts. They came from a pre-pivot analysis whose pipeline we rejected; we'll regenerate them once the new pipeline produces real output.
+
+## The hard problem: cross-source identity
+
+Cross-source identity resolution was at **~1%** in the pre-pivot analysis — most Gmail senders never linked to WhatsApp contacts. Same person appears as "Sanchay" on WhatsApp, `sanchay.t@...` on Gmail, `@san` on Slack. Some of that bridges with string-matching; most doesn't.
+
+This is an **empirical problem, not a theoretical one**. We don't know what the patterns actually look like until we look. The approach: LLM on OpenClaw does the heavy inference against rich context; rules on Orbit accelerate obvious cases (same phone → auto-merge, domain classifiers, phone normalization). The specific algorithms, thresholds, and waterfalls are things to discover from real data — not prescribe from theory.
 
 ## V0 framing
 
@@ -59,21 +68,26 @@ Not the graph. Not the feed. **One structured JSON record per human**, combining
 
 Not "unified graph." Not "intelligence platform." Not "AI CRM." **Unified cards for cross-app people.** Narrow and honest.
 
-Three demo anchors — all real, from Sanchay's actual data:
+Three demo anchors — all real, from Sanchay's own data:
 
-- **Imran Sable** — cross-source work partner, RISING trend, 2 emails linked to 1 phone (proves cross-channel identity resolution works)
-- **Aryan Yadav** — going-cold (18 days quiet), 150 interactions, specific unanswered questions preserved (proves the memory notices what the human forgot)
-- **Hardeep Gambhir** — internal teammate, 21 shared WhatsApp groups materialized as `CO_PRESENT_IN` edges (proves weak signal stays weak)
+- **Imran Sable** — cross-source work partner, RISING trend, 1 phone + 2 emails merged
+- **Aryan Yadav** — going-cold (18 days quiet), 150 interactions, specific unanswered questions preserved
+- **Hardeep Gambhir** — internal teammate, 21 shared WhatsApp groups as `CO_PRESENT_IN` edges
 
 ## What this is not
 
 - **Not a chatbot.** OpenClaw is the chat surface. Orbit is the memory it reads from.
-- **Not a visual graph toy.** A pretty constellation is nice; the packet is the product.
-- **Not multi-tenant yet.** One founder at a time until V0 lands.
-- **Not mobile yet.** Desktop-first until cards render cleanly on one screen.
+- **Not a visual graph toy.** The graph view helps humans orient; the packet is the product.
+- **Not multi-tenant yet.** One founder, their own OpenClaw, their own Orbit — until V0 lands. Multi-founder is a later product shape that reuses the same contracts.
+- **Not mobile yet.** Desktop-first until cards render cleanly.
+
+## Build philosophy
+
+Build for **fit and correctness**, not speed-to-ship. When the data model is a graph and the roadmap has graph-native queries, use a graph database — don't work around it with a relational store "for now." When a problem is empirical, plan to experiment — don't prescribe algorithms from theory. Ship the right thing at the abstraction level the problem lives at. See [06-operating.md](./06-operating.md).
 
 ## Further reading
 
-- Full design spec (authoritative): [docs/superpowers/specs/2026-04-18-orbit-v0-design.md](../docs/superpowers/specs/2026-04-18-orbit-v0-design.md)
-- Architecture in depth: [02-architecture.md](./02-architecture.md)
-- Current state (what exists today): [03-current-state.md](./03-current-state.md)
+- Architecture (layers + contracts): [02-architecture.md](./02-architecture.md)
+- Current state (what exists on disk today): [03-current-state.md](./03-current-state.md)
+- Data flow (first-time bootstrap + monitoring): [07-data-flow.md](./07-data-flow.md) *(to be written)*
+- Explicit open questions: [08-open-questions.md](./08-open-questions.md) *(to be written)*
