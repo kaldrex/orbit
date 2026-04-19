@@ -347,3 +347,19 @@ Artifacts:
 - Endpoint rollback: `git revert` the route handler commit.
 
 ---
+
+---
+
+## 2026-04-19 — V0 observer/resolver live run — Umayr end-to-end
+
+**Claim:** "The V0 Orbit pipeline (Wazowski on claw → orbit-observer skill → orbit-rules plugin → POST /observations → Supabase → manual merge → GET /card) produces an honest human card for Umayr Sheik, scoring 6/6 on the session's locked scorecard (name, phones, emails, cross-source, interactions, relationship context)."
+
+**Investigation:** Deployed `orbit-rules` plugin to `~/.openclaw/plugins/orbit-rules/` on claw (installed via `openclaw plugins install`; loader wired to openclaw's plugin-entry bundle via the `{ t: definePluginEntry }` destructure pattern). Deployed `orbit-observer/SKILL.md` and `orbit-resolver/SKILL.md` to `~/.openclaw/workspace/skills/`. Pointed claw's `ORBIT_API_URL` at the dev Mac via Tailscale (`http://100.97.152.84:3047/api/v1`). Fired two agent turns via `openclaw agent --agent main`: one for observer, one for resolver.
+
+**Result:** PASS — Wazowski produced 4 interaction observations (2025-02 Gmail intro, 2025-05 Gmail SF event, 2025-12 Gmail reconnect, 2026-04 WhatsApp DM) plus 1 person observation (name "Umayr Sheik", phone +971586783040, 3 emails, company SinX Solutions, title Founder, category "friend", rich relationship_to_me). Plugin tools called: 5× domain_class, 3× canonicalize_email, 1× normalize_phone, 1× lid_to_phone. Safety drops applied (5 bot emails rejected). Correction round-trip also verified: `friend` → `team` via POST /correct.
+
+**Evidence:** `outputs/verification/2026-04-19-umayr-v0/card.json` (assembled card), `.../basket.txt` (the 5 basket rows + merge + correction), `.../README.md` (scorecard + session log).
+
+**Commit:** `49d534f` (observer+resolver SKILLs + plugin-entry loader fix) on branch `worktree-autonomous-2026-04-19`, not pushed.
+
+**Rollback:** not required — V0 artifacts are additive. To disable: `systemctl --user stop openclaw-gateway.service` on claw + `git checkout main` on dev Mac.
