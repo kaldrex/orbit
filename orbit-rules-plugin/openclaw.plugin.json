@@ -1,0 +1,25 @@
+{
+  "id": "orbit-rules",
+  "name": "Orbit Rules",
+  "version": "0.1.0",
+  "description": "Stateless deterministic rules used by the orbit-observer and orbit-resolver skills. Provides 5 tools: normalize_phone, canonicalize_email, domain_class, lid_to_phone, fuzzy_match.",
+  "entrypoint": "index.mjs",
+  "skills": ["./skills"],
+  "tools": [
+    "orbit_rules_normalize_phone",
+    "orbit_rules_canonicalize_email",
+    "orbit_rules_domain_class",
+    "orbit_rules_lid_to_phone",
+    "orbit_rules_fuzzy_match"
+  ],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "description": {
+        "type": "string",
+        "description": "Plugin reads two optional env vars. WACLI_SESSION_DB overrides the path to the whatsmeow_lid_map SQLite (default: ~/.wacli/session.db). ORBIT_RULES_DEFAULT_COUNTRY is the ISO country used for ambiguous local phone numbers (default: IN — India, since V0 founder is there)."
+      }
+    }
+  }
+}
