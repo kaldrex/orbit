@@ -3,7 +3,7 @@
   "name": "Orbit Rules",
   "version": "0.1.0",
   "description": "Stateless deterministic rules used by the orbit-observer and orbit-resolver skills. Provides 5 tools: normalize_phone, canonicalize_email, domain_class, lid_to_phone, fuzzy_match.",
-  "entrypoint": "index.mjs",
+  "entrypoint": "index.js",
   "skills": ["./skills"],
   "tools": [
     "orbit_rules_normalize_phone",

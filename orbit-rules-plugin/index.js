@@ -8,11 +8,12 @@ import { domainClass } from "./lib/domain.mjs";
 import { lidToPhone } from "./lib/lid.mjs";
 import { fuzzyMatch } from "./lib/fuzzy.mjs";
 
-// The openclaw runtime exposes definePluginEntry via a hashed bundle
-// (plugin-entry-<hash>.js). The hash rotates across releases, so we
-// glob for it in the known install dirs. decision-tinder-v2 uses the
-// same pattern — worth copying verbatim.
-function loadDefinePluginEntry() {
+// The openclaw runtime bundles plugin-entry under dist/plugin-entry-<hash>.js
+// and exports it aliased as `t` (not `definePluginEntry`). We glob for the
+// filename so we survive hash rotations across openclaw releases.
+const require = createRequire(import.meta.url);
+
+function findPluginEntryFile() {
   const candidates = [
     "/usr/lib/node_modules/openclaw/dist",
     "/opt/homebrew/lib/node_modules/openclaw/dist",
@@ -22,17 +23,14 @@ function loadDefinePluginEntry() {
     const file = fs
       .readdirSync(dir)
       .find((f) => /^plugin-entry-.*\.js$/.test(f));
-    if (file) {
-      const req = createRequire(import.meta.url);
-      return req(path.join(dir, file)).definePluginEntry;
-    }
+    if (file) return path.join(dir, file);
   }
   throw new Error(
     "orbit-rules: openclaw plugin-entry runtime not found (checked /usr/lib and /opt/homebrew)",
   );
 }
 
-const definePluginEntry = loadDefinePluginEntry();
+const { t: definePluginEntry } = require(findPluginEntryFile());
 
 // Each execute() returns the MCP-shaped envelope: one text content
 // block whose text is JSON.stringify(result). The agent parses the
