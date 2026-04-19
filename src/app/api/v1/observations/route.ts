@@ -2,12 +2,16 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getAgentOrSessionAuth } from "@/lib/api-auth";
 import {
+  OBSERVATION_KINDS,
   observationsBatchSchema,
   MAX_BATCH,
 } from "@/lib/observations-schema";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
+
+const DEFAULT_READ_LIMIT = 100;
+const MAX_READ_LIMIT = 1000;
 
 /**
  * POST /api/v1/observations
@@ -67,5 +71,82 @@ export async function POST(request: Request) {
     accepted: parsed.data.length,
     inserted: counts.inserted,
     deduped: counts.deduped,
+  });
+}
+
+/**
+ * GET /api/v1/observations?since=<iso>&kind=<kind>&limit=<n>&cursor=<uuid>
+ *
+ * Cursor-paginated read over the caller's basket. Ordered by
+ * (observed_at DESC, id DESC). Used by:
+ *   - orbit-resolver skill on claw (pulls recent observations to cluster)
+ *   - debug / verification checks
+ *
+ * Response: { observations: Observation[], next_cursor: uuid | null }
+ */
+export async function GET(request: Request) {
+  const auth = await getAgentOrSessionAuth(request);
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const url = new URL(request.url);
+  const since = url.searchParams.get("since");
+  const kind = url.searchParams.get("kind");
+  const rawLimit = url.searchParams.get("limit");
+  const cursor = url.searchParams.get("cursor");
+
+  if (kind && !OBSERVATION_KINDS.includes(kind as (typeof OBSERVATION_KINDS)[number])) {
+    return NextResponse.json(
+      { error: "invalid kind", allowed: OBSERVATION_KINDS },
+      { status: 400 },
+    );
+  }
+
+  let sinceIso: string | null = null;
+  if (since) {
+    const d = new Date(since);
+    if (Number.isNaN(d.getTime())) {
+      return NextResponse.json({ error: "invalid since" }, { status: 400 });
+    }
+    sinceIso = d.toISOString();
+  }
+
+  let limit = DEFAULT_READ_LIMIT;
+  if (rawLimit) {
+    const n = parseInt(rawLimit, 10);
+    if (!Number.isFinite(n) || n <= 0) {
+      return NextResponse.json({ error: "invalid limit" }, { status: 400 });
+    }
+    limit = Math.min(n, MAX_READ_LIMIT);
+  }
+
+  if (cursor && !/^[0-9a-f-]{36}$/i.test(cursor)) {
+    return NextResponse.json({ error: "invalid cursor" }, { status: 400 });
+  }
+
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "").trim(),
+  );
+
+  const { data, error } = await supabase.rpc("select_observations", {
+    p_user_id: auth.userId,
+    p_since: sinceIso,
+    p_kind: kind,
+    p_limit: limit,
+    p_cursor: cursor,
+  });
+  if (error) {
+    console.error("[observations] select rpc error", error);
+    return NextResponse.json({ error: "read failed" }, { status: 502 });
+  }
+
+  const rows = Array.isArray(data) ? data : [];
+  const next_cursor = rows.length === limit ? rows[rows.length - 1].id : null;
+
+  return NextResponse.json({
+    observations: rows,
+    next_cursor,
   });
 }
