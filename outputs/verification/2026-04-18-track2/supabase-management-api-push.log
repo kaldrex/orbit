@@ -1,8 +1,0 @@
-=== applying supabase/migrations/20260418_raw_events.sql ===
-[]
----http=201
-
-=== applying supabase/migrations/20260418_upsert_raw_events_rpc.sql ===
-[]
----http=201
-

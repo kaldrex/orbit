@@ -1,3 +1,0 @@
-✓ Compiled successfully in 7.1s
-Route (app)
-├ ƒ /api/v1/raw_events
