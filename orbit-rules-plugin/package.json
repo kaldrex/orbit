@@ -2,7 +2,7 @@
   "name": "orbit-rules",
   "version": "0.1.0",
   "type": "module",
-  "main": "index.mjs",
+  "main": "index.js",
   "description": "Stateless deterministic rules used by the orbit-observer and orbit-resolver skills on OpenClaw.",
   "private": true,
   "engines": {
@@ -11,5 +11,10 @@
   "dependencies": {
     "better-sqlite3": "^12.9.0",
     "libphonenumber-js": "^1.11.11"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ]
   }
 }
