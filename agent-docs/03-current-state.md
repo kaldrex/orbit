@@ -2,7 +2,7 @@
 
 > Ground-truth snapshot. What exists right now, where, and in what shape. Update this file when the answer changes.
 
-_Last meaningful update: 2026-04-18, after the clean-slate prune (commit `bfb861e`)._
+_Last meaningful update: 2026-04-19, after the data-gathering session + VM cron cleanup._
 
 ## Backend surface
 
@@ -53,7 +53,7 @@ UI scaffolding still lives under `src/app/dashboard/`, `src/app/onboarding/`, `s
 | Supabase `auth.users` | One user — `sanchaythalnerkar@gmail.com` (id `dbb398c2-1eff-4eee-ae10-bad13be5fda7`). Password reset this session; stored in `.env.local` as `ORBIT_USER_EMAIL` / `ORBIT_USER_PASSWORD`. |
 | Neo4j Aura | **Empty.** 0 nodes, 0 edges. The 1,711-person / 366k-edge pre-pivot graph was wiped — it was never touched by Track 1 or 2, all fossil from an older `/api/v1/ingest` path. Schema (2 built-in LOOKUP indexes) preserved. |
 | Vercel prod (`orbit-mu-roan.vercel.app`) | **Still running pre-prune code.** Sixteen old routes still live there. Untouched until you push the clean `main`. |
-| Claw VM (`openclaw-sanchay` on GCP) | `openclaw-gateway.service` **stopped**. Plugins `orbit-connector/` and `orbit-saas/` deleted. Nothing is currently posting events anywhere. |
+| Claw VM (`openclaw-sanchay` on GCP) | Wazowski agent healthy (daily-briefing + memory-dreaming crons running clean). **`openclaw-gateway.service` failing** on every restart — `~/.openclaw/openclaw.json` still references a deleted `orbit-connector` plugin path, so port 18789 is dead. Two orbit crons (`orbit-full-ingest`, `orbit-relationship-sync`) **disabled 2026-04-19** — they were timing out every run. 41 pre-pivot files archived to `~/.openclaw/workspace/.archive/pre-pivot-2026-04-19/`. WhatsApp capture is currently dark: `gowa` logged out of WhatsApp 2026-04-09 06:29 UTC (local store truncated); `wacli.db` last written 2026-04-17 13:37 UTC — no one runs `wacli sync --follow` persistently. gws (Gmail / Calendar / Contacts) authorized + live. Full detail: [10-eda-findings-2026-04-19.md](./10-eda-findings-2026-04-19.md). |
 
 ## What's gone (clean-slate prune, 2026-04-18)
 
@@ -80,13 +80,13 @@ All in `.env.local` (worktree and parent repo — both in sync):
 
 ## Git state
 
-- Default branch: `main` at [github.com/kaldrex/orbit](https://github.com/kaldrex/orbit). Fast-forwarded this session.
-- Active claude worktree: `.claude/worktrees/eloquent-stonebraker-d61d79` on branch `claude/eloquent-stonebraker-d61d79`.
+- Default branch: `main` at [github.com/kaldrex/orbit](https://github.com/kaldrex/orbit). Fast-forwarded to `6dee92c` on 2026-04-19 (3 docs-only commits from the data-gathering session).
+- Active claude worktree: `.claude/worktrees/silly-cori-95f535` on branch `claude/silly-cori-95f535`. Merged to main 2026-04-19 — can be removed if no further work queued on it.
 - No other claude worktrees. Two codex worktrees under `~/.codex/worktrees/` are separate and left alone.
-- Stale origin branches (`docs/spec-suite`, `feat/plugin-provenance-passthrough`) deleted this session.
 
 ## Changelog
 
 | Date | Change |
 |---|---|
 | 2026-04-18 | Clean-slate prune. Deleted 13 API routes, 5 lib files, 10 scripts, 5 tests, both plugin packages, stale docs. Neo4j wiped. Claw plugins removed. `main` is now the single source of truth for the clean backend. Agent-docs layer introduced. |
+| 2026-04-19 | Data-gathering / EDA session. No code changes. VM cleanup: disabled `orbit-full-ingest` + `orbit-relationship-sync` crons (both were failing every run), archived 41 pre-pivot files (30 `orbit_*.py` scripts + 11 `memory/2026-04-*-orbit-ingest*.md` logs) to `~/.openclaw/workspace/.archive/pre-pivot-2026-04-19/`. Added [10-eda-findings-2026-04-19.md](./10-eda-findings-2026-04-19.md) — the authoritative handoff. Design decisions locked to Claude auto-memory: V0 channel scope (WhatsApp first, Apple deferred), single-source is first-class, observations carry reasoning chains, resolver-as-OpenClaw-skill. |
