@@ -1,145 +1,94 @@
 # 02 · Architecture
 
-> The "how." Read this before touching schema, routes, projection, or identity resolution.
+> The "how" at the level of intent. Read this before touching stores, routes, or projection.
+> Exact column names, indexes, and thresholds are implementation — they evolve as we learn. This file describes *what each layer is for* and *why*.
 
-## Three durable layers (the inversion)
+## Two stores, one conceptual model
 
-1. **`raw_events`** — immutable append-only ledger in Supabase Postgres. One row per source event. Idempotent on `(user_id, source, source_event_id)`. Schema lives in [src/lib/raw-events-schema.ts](../src/lib/raw-events-schema.ts); table DDL applied directly via Management API. Columns defined in [design spec §2](../docs/superpowers/specs/2026-04-18-orbit-v0-design.md).
-2. **`interactions`** — deterministic projection from `raw_events`. One row per cross-source interaction with identity resolved. **Not built yet** (Track 3.1).
-3. **`persons` + Neo4j graph + packet cache** — canonical entities, aliases, segment, relationship stats, LLM-enriched context. **Not built yet** (Track 3.2–3.4). Neo4j is currently empty — we wiped the pre-pivot graph.
+Orbit has two durable stores. Their responsibilities do not overlap.
 
-**Rule:** if you're tempted to write anything *other* than `raw_events` from a source connector, stop. Sources write to the ledger. Everything else is downstream of the ledger.
+| Store | Holds | Why here |
+|---|---|---|
+| **Supabase Postgres** | `raw_events` ledger, auth, `api_keys`, `profiles` | Immutable audit log + account data. Row-shaped, not relationship-shaped. |
+| **Neo4j Aura** | `persons`, `edges`, `observations`, packet cache | The entire relationship layer. Graph-native queries (path-finding, cluster detection, intro-path, centrality) will live here — some now, some later. |
 
-## Three API contracts (the loop)
+**No state drift** because there is no overlap. Every entity has exactly one home. Auth is never in Neo4j; persons are never in Postgres.
 
-The entire backend surface is three routes. Everything agents or UI does goes through one of them.
+## Why Neo4j is load-bearing from day one
+
+The product is a relationship memory. The data model is a graph. The roadmap has graph-native queries — community detection, intro-path recommendations, shared-cluster discovery, eventual cross-founder overlap — that are natural in Cypher and awkward in SQL.
+
+Postgres-as-graph would work for today's shallow queries. It costs us Cypher ergonomics, built-in graph algorithms (GDS), and the moment-of-insight when a traversal query would have changed a product decision. Building on the right store now means no migration surprise later and the full graph toolbox available when we reach for it.
+
+See [01-vision.md](./01-vision.md) "Build philosophy" — fit and correctness over speed-to-ship.
+
+## Three API contracts
+
+Everything agents or UI does goes through one of these.
 
 ### 1. Write events → `POST /api/v1/raw_events`
 
-- Ingress for every channel. OpenClaw plugin, backfill scripts, future sources all post here.
-- Idempotent batch upsert via the `upsert_raw_events` Postgres RPC.
-- Auth: agent API key (`ORBIT_API_KEY`) or Supabase session.
-- Implementation: [src/app/api/v1/raw_events/route.ts](../src/app/api/v1/raw_events/route.ts) (65 LOC).
-- Max batch: see `MAX_BATCH` in [src/lib/raw-events-schema.ts](../src/lib/raw-events-schema.ts).
+OpenClaw uploads raw source events in batches. Idempotent on `(user_id, source, source_event_id)` so replays are safe. Events land in the Postgres ledger; a projection step populates Neo4j `persons` + `edges`. Lives at [src/app/api/v1/raw_events/route.ts](../src/app/api/v1/raw_events/route.ts).
 
 ### 2. Read packet → `GET /api/v1/person/:id/packet`
 
-- **Not built yet** (Track 3.4). Track 3's packet assembler must produce JSON diff-clean against [tests/fixtures/golden-packets/](../tests/fixtures/golden-packets/).
-- Read path for both UI and OpenClaw agents.
-- Returns person identity + interactions + observations + enrichment in one JSON blob.
+Returns one human's full assembled record. Query-time join over Neo4j (persons + edges + latest observations) → JSON response. Read surface for UI and OpenClaw agents alike. The packet shape is the stable contract; its fields evolve. Not yet implemented.
 
 ### 3. Write observation → `POST /api/v1/person/:id/observation`
 
-- **Not built yet** (Track 3.5). Agent learning surface — tone corrections, segment hints, merge candidates, snoozes, corrections.
-- Observation shape (kind/value/confidence/source/evidence) defined in [design spec §6](../docs/superpowers/specs/2026-04-18-orbit-v0-design.md).
-- Observations are immutable, time-ordered, merged into packets on schedule. Bad ones can be suppressed; good ones compound.
+Typed, time-ordered, immutable learnings. Each observation carries a `kind`, a `value`, a `confidence`, a `source`, and `evidence`. Includes user corrections as a first-class kind. Observations feed packet assembly on read. Not yet implemented.
 
-**That's the whole protocol. Three routes. One table. One graph. One packet.**
+## The rules-as-tools surface
 
-## Classification rules
+Rules are not a filter that runs before the LLM. Rules are **callable tools** OpenClaw's LLM invokes via function-calling. Orbit hosts the rule implementations and exposes them as HTTP endpoints under `POST /api/v1/rules/*` (the surface may evolve toward MCP — see open questions).
 
-Sixteen first-match-wins rules that turn a resolved person into a UI category (`self · team · investor · sponsor · fellow · media · community · gov · founder · friend · press · other`). Rule 16 is an LLM fallback for the ~1–5% that nothing else catches.
+Illustrative tools OpenClaw's LLM could call:
 
-- Full table (rule · test · category): [design spec §3](../docs/superpowers/specs/2026-04-18-orbit-v0-design.md)
-- Canonical category keys: `CATEGORY_META` in [src/lib/graph-transforms.ts](../src/lib/graph-transforms.ts)
+- `classify_domain { domain }` — match against VC / press / gov / service lists
+- `merge_candidates { person_ids }` — run name-waterfall + token-match logic
+- `detect_going_cold { person_id }` — threshold logic over activity
+- `normalize_phone { raw }` — E.164 canonicalization
 
-Do not duplicate the rule list here. If you need to tweak a rule, edit the spec + the table implementation together.
+**The LLM drives. Rules accelerate.** Server-side hosting means updates ship without redeploying every OpenClaw, and the logic stays auditable from one place.
 
-## Identity resolution
+## Data flow — intent, not mechanism
 
-**Name waterfall** (priority order — fall through until one produces a displayable name):
+Two kinds of records arrive from OpenClaw during ingestion:
 
-1. Google Contacts `displayName` matched by canonical E.164 phone
-2. wacli `full_name`
-3. wacli `push_name`
-4. wacli `first_name`
-5. `business_name`
-6. → **Side bucket** ("Needs review" — stays out of main graph, keeps history, graduates out when a name arrives)
+- **What happened** — source events, verbatim. Immutable, replayable. Any bug in inference is recoverable by re-running projection.
+- **What was inferred** — observations. Confidence-scored, source-attributed, supersedable. Covers agent-derived insights (segment hints, topic summaries, tone) *and* human corrections.
 
-**Merge rules** (applied after waterfall picks a name):
+The two kinds have different lifecycles, different trust levels, different re-processing semantics. How exactly OpenClaw uploads them — one stream with tagged records vs. two separate endpoints — is an open implementation question to be settled by experimenting on one connector end-to-end. See [07-data-flow.md](./07-data-flow.md) and [08-open-questions.md](./08-open-questions.md).
 
-- Deterministic: same phone · same email · same JID → auto-merge
-- Pattern: Google Contacts name-token bridge from WA phone to Gmail sender
-- Fuzzy: Levenshtein ≤2 on ≥2 normalized tokens → human-review queue
-- **Never** auto-merge on single-token collisions (e.g. `Jain` / `Yadav`)
+## Identity resolution — empirical, not theoretical
 
-Full detail: [design spec §5](../docs/superpowers/specs/2026-04-18-orbit-v0-design.md).
+Cross-channel identity is the hardest problem in the product and the biggest potential moat. The previous build's ~1% cross-source match rate is the receipt.
 
-## LLM responsibility split
-
-Two LLMs in the system. They do different things.
-
-- **Orbit-side LLM** (static, cached, cheap): ambiguous segment classification; `recent_topics`, `outstanding_action_items`, `tone`. Writes into durable packet fields. Nightly cron. ~$520/founder/year. Track 4.
-- **OpenClaw-side LLM** (dynamic, per-query): drafts, meeting prep briefs, semantic search, cross-agent coordination. Uses the packet as input. Outputs may flow back as observations. Founder's own API budget.
-
-Full detail: [design spec §4](../docs/superpowers/specs/2026-04-18-orbit-v0-design.md).
+The right approach is empirical: we don't know what the data actually looks like until we look. OpenClaw's LLM does the heavy inference against rich context (names, histories, content, patterns). Orbit's rule tools accelerate obvious deterministic cases (same phone → auto-merge, domain classification, phone normalization). Thresholds, fuzzy-match rules, and cluster-detection strategies are to be discovered from your real data — not prescribed from theory — and will evolve.
 
 ## Data source status
 
-| Source | State | Gotcha |
+| Source | OpenClaw tool | Orbit ingestion status |
 |---|---|---|
-| WhatsApp | ✅ in ledger (33,105 rows) | NULs + unpaired UTF-16 surrogates in text break JSONB — sanitizer lives in [scripts/fast-copy-wacli-to-raw-events.mjs](../scripts/fast-copy-wacli-to-raw-events.mjs) |
-| Gmail | ⚠️ connector exists (pre-prune), not in ledger | Widened to 12 mo; category-exclude at query |
-| Google Contacts | ⚠️ `contacts.readonly` working; `contacts.other.readonly` pending | The `other` scope is additive; ~2–3× cross-source match rate when it lands |
-| Calendar | ⚠️ works live via `gws calendar events list`; no ledger write path yet | — |
-| Slack | ❌ in-memory only; no persistence | Connector exists but doesn't post to `raw_events` |
-| Linear | ❌ same as Slack | — |
-
-Full table: [design spec §8](../docs/superpowers/specs/2026-04-18-orbit-v0-design.md).
+| WhatsApp | `wacli` | Ledger populated (33k rows from bootstrap); plugin streaming path TBD |
+| Gmail | `gws` | Tool available; ingestion path not yet built |
+| Google Contacts | `gws` | `contacts.readonly` working; `contacts.other.readonly` pending (2–3× cross-source match rate when it lands) |
+| Calendar | `gws` | Live query works; ledger write path TBD |
+| Slack | pending | No persistence path yet |
+| Linear | pending | No persistence path yet |
 
 ## Tech stack
 
-- **Frontend + backend:** Next.js 16 (App Router, RSC, Turbopack). See the warning in [CLAUDE.md](../CLAUDE.md) — breaking changes from older Next versions; read `node_modules/next/dist/docs/` before writing route code.
-- **Database:** Supabase Postgres (ledger, auth, observations). Connection strings in `.env.local`. Migration flow in [06-operating.md](./06-operating.md).
-- **Graph:** Neo4j Aura (persons + edges). Currently empty; Track 3.2 repopulates from `interactions`.
-- **Auth:** Supabase session cookies for UI; agent API keys for plugin. Primitives in [src/lib/api-auth.ts](../src/lib/api-auth.ts).
-- **Tests:** Vitest. 26 tests, ~1s full suite. `npm test`.
-
-## Infrastructure touchpoints
-
-Three external services. Each has a gotcha worth knowing before you open a connection.
-
-### Supabase Postgres
-
-**Public tables (post clean-slate, 3 total):**
-
-| Table | Rows | Purpose |
-|---|---|---|
-| `raw_events` | 33,105 | The ledger. Idempotent on `(user_id, source, source_event_id)`. RLS on. |
-| `api_keys` | 2 | Agent API keys (hashed). Read by `getAgentOrSessionAuth` in [src/lib/api-auth.ts](../src/lib/api-auth.ts). |
-| `profiles` | 1 | User display data (`display_name`, `avatar_url`). `self_node_id` column exists but is nulled after the Neo4j wipe; Track 3.2 will repopulate it when the projection runs. |
-
-Plus `public.upsert_raw_events` RPC (the idempotent batch upsert). Plus the standard Supabase `auth.*` schema (managed; don't touch).
-
-Track 3 adds `interactions` (view or materialized view) and an `observations` table. No other tables should exist. If a fresh probe shows more, they're debt — investigate and cut.
-
-- **RLS is on for `raw_events`.** Policies allow `auth.uid() = user_id` for SELECT + INSERT. A client-side query using the anon key returns empty silently if the user isn't authenticated. The ledger route in [src/app/api/v1/raw_events/route.ts](../src/app/api/v1/raw_events/route.ts) bypasses this by calling the `upsert_raw_events` RPC with the server-resolved `userId` after `getAgentOrSessionAuth`.
-- **Two connection paths.** Scripts use `SUPABASE_DB_URL` (pooler, direct `psql`/`pg`). Routes use the Supabase JS client with `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Pick based on context.
-
-### Neo4j Aura
-
-- **Env vars have literal `\n` suffixes** in Vercel prod (`NEO4J_URI`, `NEO4J_USER`, `NEO4J_DATABASE`). Every caller must `.trim()` them. Missing the trim produces cryptic driver errors.
-- **Driver usage pattern:**
-  ```js
-  import neo4j from "neo4j-driver";
-  const uri = process.env.NEO4J_URI.trim();
-  const driver = neo4j.driver(uri, neo4j.auth.basic(
-    process.env.NEO4J_USER.trim(),
-    process.env.NEO4J_PASSWORD,
-  ));
-  const session = driver.session({ database: (process.env.NEO4J_DATABASE || "neo4j").trim() });
-  try { /* await session.run("MATCH ...") */ } finally { await session.close(); await driver.close(); }
-  ```
-- **No driver helpers in repo right now.** Track 3.2 adds the projection; that's where the permanent pattern will live.
-
-### OpenClaw plugin runtime
-
-- **Runtime:** `openclaw-gateway` systemd user service on the founder's machine. Currently stopped on claw post-prune.
-- **Plugin install location:** `~/.openclaw/plugins/<plugin-name>/` with an `openclaw.plugin.json` manifest + an `index.js` that uses `definePluginEntry` from the `openclaw` npm package (globally installed at `/opt/homebrew/lib/node_modules/openclaw/dist/` on Mac, `/usr/lib/node_modules/openclaw/dist/` on Linux).
-- **Historical reference:** the deleted `packages/orbit-plugin/` and `packages/openclaw-plugin/` had working manifest + plugin-entry code. Retrieve them if you need a scaffold: `git show bfb861e:packages/orbit-plugin/openclaw.plugin.json` and `git show bfb861e:packages/openclaw-plugin/index.js`. Use them as a starting point for Track 2.5's fresh plugin — then delete the scaffold and write clean, protocol-faithful code against the three contracts.
+- **Frontend + backend:** Next.js 16 (App Router, RSC, Turbopack). Read `node_modules/next/dist/docs/` before writing route code — breaking changes from older Next versions.
+- **Ledger + auth:** Supabase Postgres. Connection details in `.env.local`. Migration flow in [06-operating.md](./06-operating.md).
+- **Graph:** Neo4j Aura. Env var gotcha: some deployments have literal `\n` suffixes on `NEO4J_URI`, `NEO4J_USER`, `NEO4J_DATABASE` — `.trim()` in every caller.
+- **Auth primitives:** Supabase session cookies for UI, API keys for agents. See [src/lib/api-auth.ts](../src/lib/api-auth.ts).
+- **Tests:** Vitest. Full suite under 1 second as of this writing.
 
 ## Further reading
 
-- Full design spec: [docs/superpowers/specs/2026-04-18-orbit-v0-design.md](../docs/superpowers/specs/2026-04-18-orbit-v0-design.md)
-- Testing contract: [docs/superpowers/specs/2026-04-18-testing-and-verification.md](../docs/superpowers/specs/2026-04-18-testing-and-verification.md)
-- Current state snapshot: [03-current-state.md](./03-current-state.md)
+- Product framing: [01-vision.md](./01-vision.md)
+- Current state (what's on disk today): [03-current-state.md](./03-current-state.md)
+- Data flow (bootstrap + monitoring): [07-data-flow.md](./07-data-flow.md) *(to be written)*
+- Open implementation questions: [08-open-questions.md](./08-open-questions.md) *(to be written)*
+- Operating rules: [06-operating.md](./06-operating.md)
