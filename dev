@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Worktree-pinned dev runner for autonomous-2026-04-19.
+# Sources .env.local so PORT (and anything else) takes effect for the CLI.
+set -a
+[ -f "$(dirname "$0")/.env.local" ] && . "$(dirname "$0")/.env.local"
+set +a
+exec npm run dev -- --port "${PORT:-3047}"
