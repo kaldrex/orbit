@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getAgentOrSessionAuth } from "@/lib/api-auth";
-import {
-  assembleCard,
-  type ObservationRow,
-} from "@/lib/card-assembler";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -24,6 +20,19 @@ interface EnrichedPerson {
   updated_at: string | null;
 }
 
+interface EnrichedRpcRow {
+  id: string;
+  name: string | null;
+  phones: string[] | null;
+  emails: string[] | null;
+  category: string | null;
+  relationship_to_me: string | null;
+  company: string | null;
+  title: string | null;
+  updated_at: string | null;
+  page_last_id: string | null;
+}
+
 /**
  * GET /api/v1/persons/enriched
  *
@@ -35,8 +44,8 @@ interface EnrichedPerson {
  * Cursor-paginated. Auth via Bearer. Honors RLS (caller only sees
  * their own persons).
  *
- * Used by manifest-gen's enrichment-preservation loop (Phase C3) so
- * regenerating the manifest does NOT overwrite LLM-enriched fields.
+ * Backed by the `select_enriched_persons` SECURITY DEFINER RPC which
+ * performs the fold + filter server-side — no per-person round-trip.
  *
  * Response shape: { persons: EnrichedPerson[], next_cursor: string | null }
  */
@@ -68,72 +77,37 @@ export async function GET(request: Request) {
     (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "").trim(),
   );
 
-  // Page through persons via select_persons_page RPC (SECURITY DEFINER) —
-  // mirrors the bypass-RLS pattern used by select_observations +
-  // select_person_observations. Direct .from("persons") hits RLS under the
-  // ANON key and returns nothing, so the RPC is load-bearing.
-  const pageSize = limit;
-  const { data: personRows, error: personsError } = await supabase.rpc(
-    "select_persons_page",
-    {
-      p_user_id: auth.userId,
-      p_cursor: cursor ?? null,
-      p_limit: pageSize,
-    },
-  );
-  if (personsError) {
-    console.error("[persons/enriched] persons error", personsError);
+  const { data, error } = await supabase.rpc("select_enriched_persons", {
+    p_user_id: auth.userId,
+    p_cursor: cursor ?? null,
+    p_limit: limit,
+  });
+  if (error) {
+    console.error("[persons/enriched] rpc error", error);
     return NextResponse.json({ error: "read failed" }, { status: 502 });
   }
 
-  const ids = (Array.isArray(personRows) ? personRows : []).map(
-    (r) => (r as { id: string }).id,
-  );
-  if (ids.length === 0) {
-    return NextResponse.json({ persons: [], next_cursor: null });
-  }
+  const rows = (Array.isArray(data) ? data : []) as EnrichedRpcRow[];
 
-  const persons: EnrichedPerson[] = [];
-  for (const id of ids) {
-    const { data: rpcData, error: obsError } = await supabase.rpc(
-      "select_person_observations",
-      { p_user_id: auth.userId, p_person_id: id },
-    );
-    if (obsError) {
-      console.error("[persons/enriched] obs error", id, obsError);
-      continue;
-    }
-    const rows = (Array.isArray(rpcData) ? rpcData : []) as ObservationRow[];
-    if (rows.length === 0) continue;
-    const card = assembleCard(id, rows);
-    const categoryEnriched =
-      !!card.category && card.category !== "other";
-    const relEnriched =
-      typeof card.relationship_to_me === "string" &&
-      card.relationship_to_me.length > 0 &&
-      !card.relationship_to_me.startsWith("Appears in");
-    if (!categoryEnriched && !relEnriched) continue;
-    const latestObservedAt = rows
-      .map((r) => r.observed_at)
-      .sort()
-      .slice(-1)[0] ?? null;
-    persons.push({
-      id,
-      name: card.name,
-      phones: card.phones,
-      emails: card.emails,
-      category: card.category,
-      relationship_to_me: card.relationship_to_me,
-      company: card.company,
-      title: card.title,
-      updated_at: latestObservedAt,
-    });
-  }
+  // page_last_id is identical across every row; NULL signals "short page,
+  // no next cursor". The RPC also emits a sentinel row with id=NULL when
+  // the page was full but every person was filtered out — so the caller
+  // can keep paging. Skip sentinel rows when building persons[].
+  const persons: EnrichedPerson[] = rows
+    .filter((r) => r.id !== null)
+    .map((r) => ({
+      id: r.id,
+      name: r.name,
+      phones: r.phones ?? [],
+      emails: r.emails ?? [],
+      category: r.category,
+      relationship_to_me: r.relationship_to_me ?? "",
+      company: r.company,
+      title: r.title,
+      updated_at: r.updated_at,
+    }));
 
-  // Cursor is the id of the last row in the underlying page (not of the
-  // filtered persons), so pagination does not "skip" filtered rows.
-  const next_cursor =
-    ids.length === pageSize ? ids[ids.length - 1] : null;
+  const next_cursor = rows.length > 0 ? rows[0].page_last_id : null;
 
   return NextResponse.json({ persons, next_cursor });
 }

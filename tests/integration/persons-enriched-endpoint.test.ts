@@ -2,37 +2,31 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const getAuthMock = vi.fn();
 
-let personsPayload: Array<{ id: string }> = [];
-let personsError: unknown = null;
-// Map person_id -> observation rows returned by select_person_observations
-let obsMap: Record<string, unknown[]> = {};
+// Rows returned by the select_enriched_persons RPC. Shape matches the
+// RPC contract: 8 data fields + page_last_id.
+let enrichedPayload: Array<{
+  id: string | null;
+  name: string | null;
+  phones: string[] | null;
+  emails: string[] | null;
+  category: string | null;
+  relationship_to_me: string | null;
+  company: string | null;
+  title: string | null;
+  updated_at: string | null;
+  page_last_id: string | null;
+}> = [];
+let enrichedError: unknown = null;
 
 vi.mock("@/lib/api-auth", () => ({
   getAgentOrSessionAuth: getAuthMock,
 }));
 
-// Kept as a harmless fallback (route no longer uses .from() directly —
-// switched to select_persons_page RPC to bypass RLS under the ANON key).
-function makeQueryBuilder() {
-  const builder: any = {};
-  builder.select = () => builder;
-  builder.eq = () => builder;
-  builder.order = () => builder;
-  builder.gt = () => builder;
-  builder.limit = async () => ({ data: personsPayload, error: personsError });
-  return builder;
-}
-
 vi.mock("@supabase/supabase-js", () => ({
   createClient: () => ({
-    from: (_: string) => makeQueryBuilder(),
-    rpc: async (name: string, args: Record<string, unknown>) => {
-      if (name === "select_persons_page") {
-        return { data: personsPayload, error: personsError };
-      }
-      if (name === "select_person_observations") {
-        const id = args.p_person_id as string;
-        return { data: obsMap[id] ?? [], error: null };
+    rpc: async (name: string, _args: Record<string, unknown>) => {
+      if (name === "select_enriched_persons") {
+        return { data: enrichedPayload, error: enrichedError };
       }
       return { data: [], error: null };
     },
@@ -47,18 +41,31 @@ function req(url = "http://localhost/api/v1/persons/enriched"): Request {
   return new Request(url);
 }
 
-function enrichedPersonObs(id: string, payload: Record<string, unknown>) {
+function enrichedRow(
+  id: string,
+  fields: Partial<{
+    name: string | null;
+    phones: string[] | null;
+    emails: string[] | null;
+    category: string | null;
+    relationship_to_me: string | null;
+    company: string | null;
+    title: string | null;
+    updated_at: string | null;
+    page_last_id: string | null;
+  }> = {},
+) {
   return {
-    id: `obs-${id}`,
-    user_id: "user-1",
-    observed_at: "2026-04-19T08:22:00+00:00",
-    ingested_at: "2026-04-19T08:22:00+00:00",
-    observer: "wazowski",
-    kind: "person",
-    evidence_pointer: "wacli://contacts/jid=X",
-    confidence: 0.95,
-    reasoning: "enriched",
-    payload,
+    id,
+    name: fields.name ?? null,
+    phones: fields.phones ?? [],
+    emails: fields.emails ?? [],
+    category: fields.category ?? null,
+    relationship_to_me: fields.relationship_to_me ?? "",
+    company: fields.company ?? null,
+    title: fields.title ?? null,
+    updated_at: fields.updated_at ?? null,
+    page_last_id: fields.page_last_id ?? null,
   };
 }
 
@@ -66,9 +73,8 @@ describe("GET /api/v1/persons/enriched", () => {
   beforeEach(() => {
     getAuthMock.mockReset();
     getAuthMock.mockResolvedValue({ userId: "user-1", selfNodeId: null });
-    personsPayload = [];
-    personsError = null;
-    obsMap = {};
+    enrichedPayload = [];
+    enrichedError = null;
   });
 
   it("401 when not authenticated", async () => {
@@ -77,8 +83,8 @@ describe("GET /api/v1/persons/enriched", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns empty when no persons", async () => {
-    personsPayload = [];
+  it("returns empty when RPC returns no rows", async () => {
+    enrichedPayload = [];
     const res = await GET(req());
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -86,11 +92,10 @@ describe("GET /api/v1/persons/enriched", () => {
     expect(body.next_cursor).toBeNull();
   });
 
-  it("includes persons with non-'other' category", async () => {
+  it("passes enriched persons through with the expected shape", async () => {
     const umayrId = "67050b91-5011-4ba6-b230-9a387879717a";
-    personsPayload = [{ id: umayrId }];
-    obsMap[umayrId] = [
-      enrichedPersonObs(umayrId, {
+    enrichedPayload = [
+      enrichedRow(umayrId, {
         name: "Umayr Sheik",
         category: "team",
         phones: ["+971586783040"],
@@ -98,120 +103,125 @@ describe("GET /api/v1/persons/enriched", () => {
         company: "SinX Solutions",
         title: "Founder",
         relationship_to_me: "Close friend",
+        updated_at: "2026-04-19T08:22:00+00:00",
+        page_last_id: null,
       }),
     ];
     const res = await GET(req());
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.persons).toHaveLength(1);
+    expect(body.persons[0].id).toBe(umayrId);
     expect(body.persons[0].name).toBe("Umayr Sheik");
     expect(body.persons[0].category).toBe("team");
     expect(body.persons[0].relationship_to_me).toBe("Close friend");
+    expect(body.persons[0].company).toBe("SinX Solutions");
+    expect(body.persons[0].title).toBe("Founder");
+    expect(body.persons[0].phones).toEqual(["+971586783040"]);
+    expect(body.persons[0].emails).toEqual(["usheik@sinx.ai"]);
+    expect(body.persons[0].updated_at).toBe("2026-04-19T08:22:00+00:00");
   });
 
-  it("excludes persons with category='other' and empty relationship_to_me (pure seed)", async () => {
-    const seedId = "11111111-1111-4111-8111-111111111111";
-    personsPayload = [{ id: seedId }];
-    obsMap[seedId] = [
-      enrichedPersonObs(seedId, {
-        name: "Anonymous Seed",
-        category: "other",
-        phones: ["+91999"],
-        emails: [],
-        company: null,
-        title: null,
-        relationship_to_me: "",
+  it("skips sentinel rows with id=null but uses their page_last_id", async () => {
+    // Sentinel-only page: every person in the underlying page was filtered
+    // out by the RPC's enriched predicate, but there are more pages to
+    // scan — the caller must get a non-null next_cursor to keep paging.
+    enrichedPayload = [
+      enrichedRow("00000000-0000-0000-0000-000000000000", {
+        page_last_id: "11111111-1111-1111-1111-111111111111",
       }),
     ];
-    const res = await GET(req());
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.persons).toHaveLength(0);
-  });
-
-  it("excludes persons whose relationship_to_me is the legacy placeholder prose", async () => {
-    const id = "11111111-1111-4111-8111-111111111222";
-    personsPayload = [{ id }];
-    obsMap[id] = [
-      enrichedPersonObs(id, {
-        name: "PlaceholderGuy",
-        category: "other",
-        phones: ["+91888"],
-        emails: [],
-        company: null,
-        title: null,
-        relationship_to_me: "Appears in 3 threads across 2 channels. Pending enrichment.",
-      }),
-    ];
+    // Override to make the row's id explicitly null (sentinel).
+    enrichedPayload[0].id = null;
     const res = await GET(req());
     const body = await res.json();
     expect(body.persons).toHaveLength(0);
-  });
-
-  it("includes persons with non-empty real relationship_to_me even if category is 'other'", async () => {
-    const id = "33333333-3333-4333-8333-333333333333";
-    personsPayload = [{ id }];
-    obsMap[id] = [
-      enrichedPersonObs(id, {
-        name: "Ramon",
-        category: "other",
-        phones: ["+17874244135"],
-        emails: [],
-        company: null,
-        title: null,
-        relationship_to_me: "Freelance client and close collaborator.",
-      }),
-    ];
-    const res = await GET(req());
-    const body = await res.json();
-    expect(body.persons).toHaveLength(1);
-    expect(body.persons[0].relationship_to_me).toMatch(/^Freelance/);
+    expect(body.next_cursor).toBe("11111111-1111-1111-1111-111111111111");
   });
 
   it("rejects invalid cursor", async () => {
-    const res = await GET(req("http://localhost/api/v1/persons/enriched?cursor=not-uuid"));
+    const res = await GET(
+      req("http://localhost/api/v1/persons/enriched?cursor=not-uuid"),
+    );
     expect(res.status).toBe(400);
   });
 
   it("rejects invalid limit", async () => {
-    const res = await GET(req("http://localhost/api/v1/persons/enriched?limit=0"));
+    const res = await GET(
+      req("http://localhost/api/v1/persons/enriched?limit=0"),
+    );
     expect(res.status).toBe(400);
   });
 
-  it("returns next_cursor when page is full", async () => {
-    // Build 3 enriched persons; request limit=3, expect cursor to point to the last.
+  it("returns next_cursor when the RPC marks the page as full", async () => {
     const ids = [
       "44444444-4444-4444-8444-444444444441",
       "44444444-4444-4444-8444-444444444442",
       "44444444-4444-4444-8444-444444444443",
     ];
-    personsPayload = ids.map((id) => ({ id }));
-    for (const id of ids) {
-      obsMap[id] = [
-        enrichedPersonObs(id, {
-          name: "X",
-          category: "team",
-          phones: [],
-          emails: [],
-          company: null,
-          title: null,
-          relationship_to_me: "",
-        }),
-      ];
-    }
+    enrichedPayload = ids.map((id) =>
+      enrichedRow(id, {
+        name: "X",
+        category: "team",
+        page_last_id: ids[ids.length - 1],
+      }),
+    );
     const res = await GET(
       req("http://localhost/api/v1/persons/enriched?limit=3"),
     );
     const body = await res.json();
     expect(body.persons).toHaveLength(3);
-    // When the materialization page is full (size == limit) the cursor is set.
     expect(body.next_cursor).toBe(ids[ids.length - 1]);
   });
 
-  it("surfaces 502 on persons query error", async () => {
-    personsError = { message: "boom" };
-    personsPayload = [];
+  it("null page_last_id means no next cursor (short page)", async () => {
+    enrichedPayload = [
+      enrichedRow("55555555-5555-4555-8555-555555555555", {
+        name: "EndOfList",
+        category: "friend",
+        page_last_id: null,
+      }),
+    ];
+    const res = await GET(req());
+    const body = await res.json();
+    expect(body.persons).toHaveLength(1);
+    expect(body.next_cursor).toBeNull();
+  });
+
+  it("surfaces 502 on RPC error", async () => {
+    enrichedError = { message: "boom" };
+    enrichedPayload = [];
     const res = await GET(req());
     expect(res.status).toBe(502);
   });
+});
+
+// ----------------------------------------------------------------------------
+// Live dev-server latency smoke test.
+//
+// Gated on TEST_LIVE=1. Hits the running dev server (localhost:3047) with a
+// real bearer token from .env.local and asserts the full-limit round-trip
+// returns in under 3 s. Skipped in CI and default local runs so vitest stays
+// green without a server.
+// ----------------------------------------------------------------------------
+const LIVE = process.env.TEST_LIVE === "1";
+const LIVE_BASE =
+  process.env.ORBIT_LIVE_URL ?? "http://localhost:3047/api/v1";
+const LIVE_KEY = process.env.ORBIT_API_KEY ?? "";
+
+describe.skipIf(!LIVE)("GET /api/v1/persons/enriched [live]", () => {
+  it("returns under 3 s at limit=500", async () => {
+    const t0 = Date.now();
+    const res = await fetch(`${LIVE_BASE}/persons/enriched?limit=500`, {
+      headers: { Authorization: `Bearer ${LIVE_KEY}` },
+    });
+    const elapsed = Date.now() - t0;
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(Array.isArray(body.persons)).toBe(true);
+    console.log(
+      `[live] /persons/enriched?limit=500 → ${body.persons.length} persons in ${elapsed} ms`,
+    );
+    expect(elapsed).toBeLessThan(3000);
+  }, 10_000);
 });
