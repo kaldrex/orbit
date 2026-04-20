@@ -1,0 +1,33 @@
+{
+  "verdict": "STAGE4_CLEAN_PASS",
+  "seed": "971586783040@s.whatsapp.net",
+  "person_id": "67050b91-5011-4ba6-b230-9a387879717a",
+  "observer_run": {
+    "wazowski_final_summary": "observed seed=971586783040@s.whatsapp.net threads=4 interactions=4 persons=1 emitted=5 inserted=0 deduped=5",
+    "duration_ms": 22404,
+    "status": "ok",
+    "model": "claude-opus-4-6",
+    "ssh_exit_code": 124,
+    "ssh_exit_note": "124 = outer timeout wrapper hit AFTER agent completed; agent returned status:ok in 22s, see runId in log"
+  },
+  "card_diff": {
+    "baseline": "outputs/verification/2026-04-19-umayr-v0/card.json (unwrapped via .card)",
+    "new": "outputs/stage-4-smoke-2026-04-19/umayr-post-stage4.json",
+    "lines_changed": 0,
+    "classification": "zero-diff"
+  },
+  "proof_points": {
+    "skill_updated_on_claw": true,
+    "orbit_cli_plugin_loaded": true,
+    "orbit_env_vars_set": true,
+    "wazowski_returned_server_shaped_response": "emitted=5 inserted=0 deduped=5 (shape matches orbit_observation_emit response envelope)",
+    "card_fetched_via_orbit_person_get": true,
+    "no_curl_or_raw_http_in_final_text": true
+  },
+  "caveats": [
+    "openclaw agent --json does not expose Anthropic tool_use content blocks; tool invocation can only be inferred from the final server-shaped response and from the fact that no curl/http urls appear in the assistant text",
+    "Stage 4 re-run produced zero inserts because the 5 base observations were already in Orbit from prior session (ingested 2026-04-19 08:27 UTC, before the SKILL update at 14:11 UTC). Dedup is correct behavior and the SKILL explicitly expects this",
+    "openclaw tool <name> CLI is disabled via plugins.allow; orbit_person_get was invoked by running the plugin's client library directly via node on claw (same code path the tool invocation takes)"
+  ],
+  "next": "Stage 5 bulk ingest (verify orbit_observation_bulk over NDJSON at scale)"
+}

@@ -1,0 +1,22 @@
+{
+  "id": "orbit-cli",
+  "name": "Orbit CLI",
+  "version": "0.1.0",
+  "description": "Pure-plumbing wrapper around Orbit's HTTP API. Three tools: orbit_observation_emit (single POST), orbit_observation_bulk (NDJSON file -> chunked POST), orbit_person_get (GET card by UUID). Reads ORBIT_API_URL + ORBIT_API_KEY from env. No LLM calls — the observer/resolver SKILLs own all interpretation.",
+  "entrypoint": "index.js",
+  "tools": [
+    "orbit_observation_emit",
+    "orbit_observation_bulk",
+    "orbit_person_get"
+  ],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "description": {
+        "type": "string",
+        "description": "Plugin reads two required env vars. ORBIT_API_URL is the fully-qualified base including /api/v1 (e.g. http://100.97.152.84:3047/api/v1). ORBIT_API_KEY is the Bearer token (orb_live_*). Do NOT prepend /api/v1 when invoking tools — it's already in the URL."
+      }
+    }
+  }
+}

@@ -108,4 +108,68 @@ describe("GET /api/v1/person/:id/card", () => {
     const res = await GET(req(), { params: Promise.resolve({ id: personId }) });
     expect(res.status).toBe(502);
   });
+
+  // Plan B6 guardrail. Placeholder prose like "Appears in N threads..."
+  // must never leak into a card. The transformer now emits "" instead;
+  // this test asserts that an enriched observation survives even when a
+  // later seed observation with empty relationship_to_me is present in
+  // the same set. Protects Umayr's real relationship_to_me from any
+  // future bulk-regression.
+  it("keeps enriched relationship_to_me when a later seed obs has empty prose", async () => {
+    rpcData = [
+      // Seed observation — pre-enrichment baseline, category "other",
+      // relationship_to_me "".
+      {
+        id: "11111111-1111-4111-8111-111111111112",
+        user_id: "user-1",
+        observed_at: "2026-04-18T00:00:00+00:00",
+        ingested_at: "2026-04-20T00:00:00+00:00",
+        observer: "wazowski",
+        kind: "person",
+        evidence_pointer: "reingest-20260420://local-abc",
+        confidence: 0.85,
+        reasoning: "seed",
+        payload: {
+          name: "Umayr",
+          company: null,
+          category: "other",
+          title: null,
+          relationship_to_me: "",
+          phones: ["+971586783040"],
+          emails: ["usheik@sinxsolutions.ai"],
+        },
+      },
+      // Enriched observation — later observed_at, rich prose.
+      {
+        id: "22222222-2222-4222-8222-222222222222",
+        user_id: "user-1",
+        observed_at: "2026-04-19T08:22:00+00:00",
+        ingested_at: "2026-04-19T08:22:00+00:00",
+        observer: "wazowski",
+        kind: "person",
+        evidence_pointer: "wacli://contacts/jid=971586783040@s.whatsapp.net",
+        confidence: 0.95,
+        reasoning: "enriched",
+        payload: {
+          name: "Umayr Sheik",
+          company: "SinX Solutions",
+          category: "friend",
+          title: "Founder",
+          relationship_to_me:
+            "Close friend and tech peer based in Dubai. One of the few people Sanchay considers a match for deep AI/ML discussions.",
+          phones: ["+971586783040"],
+          emails: ["usheik@sinxsolutions.ai"],
+        },
+      },
+    ];
+    const res = await GET(req(), { params: Promise.resolve({ id: personId }) });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.card.name).toBe("Umayr Sheik");
+    expect(body.card.company).toBe("SinX Solutions");
+    expect(body.card.category).toBe("friend");
+    // The real test: real prose survives, not placeholder or empty.
+    expect(body.card.relationship_to_me).toMatch(/^Close friend and tech peer/);
+    expect(body.card.relationship_to_me).not.toMatch(/^Appears in /);
+  });
 });

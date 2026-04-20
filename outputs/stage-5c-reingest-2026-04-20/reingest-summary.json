@@ -1,0 +1,11 @@
+{
+  "total_person_obs_input": 1603,
+  "conflicts": [],
+  "conflicts_count": 0,
+  "inserted_person_obs": 1603,
+  "deduped_person_obs": 0,
+  "inserted_merge_obs": 1603,
+  "inserted_links": 3206,
+  "bridge_index_size": 7,
+  "existing_person_count": 2
+}

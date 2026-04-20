@@ -1,0 +1,240 @@
+{
+  "verdict": "STAGE6_V4_PASS",
+  "targetCount": 1470,
+  "contextCount": 1470,
+  "enrichedCount": 1470,
+  "failedBatchCount": 0,
+  "obsWritten": 1470,
+  "inserted": 1470,
+  "deduped": 0,
+  "postFailedBatches": 0,
+  "tokens": {
+    "input_tokens": 392429,
+    "output_tokens": 223066,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0
+  },
+  "cost": 4.523277000000001,
+  "audit": [
+    {
+      "person_id": "164d56aa-510e-41c6-a95e-5af5b94b9efa",
+      "llm_category": "fellow",
+      "llm_relationship": "Peer in the 'ARTIFICIAL INTELLIGENCE FALL 2024' and 'TOEFL PREP' groups, suggesting a co-applicant or classmate preparing for graduate studies in AI in the US.",
+      "card_category": "fellow",
+      "card_relationship": "Peer in the 'ARTIFICIAL INTELLIGENCE FALL 2024' and 'TOEFL PREP' groups, suggesting a co-applicant or classmate preparing for graduate studies in AI in the US.",
+      "card_company": null,
+      "card_title": null
+    },
+    {
+      "person_id": "1befbcd0-3800-4b70-acde-0ae8b53252eb",
+      "llm_category": "community",
+      "llm_relationship": "Member of the 'Code Samaaj - Talent' group, a developer/tech community that Sanchay is part of, with some casual group interactions observed.",
+      "card_category": "community",
+      "card_relationship": "Member of the 'Code Samaaj - Talent' group, a developer/tech community that Sanchay is part of, with some casual group interactions observed.",
+      "card_company": null,
+      "card_title": null
+    },
+    {
+      "person_id": "582b91da-bb7c-47cc-949d-71a011609f09",
+      "llm_category": "fellow",
+      "llm_relationship": "Member of the 'USA Fall 2024' group shared with Sanchay, suggesting a peer from a cohort or network of Indian students or professionals exploring US opportunities in Fall 2024.",
+      "card_category": "fellow",
+      "card_relationship": "Member of the 'USA Fall 2024' group shared with Sanchay, suggesting a peer from a cohort or network of Indian students or professionals exploring US opportunities in Fall 2024.",
+      "card_company": null,
+      "card_title": null
+    },
+    {
+      "person_id": "5ade28cc-ffc5-4ec7-b775-628c27cf1d17",
+      "llm_category": "fellow",
+      "llm_relationship": "College peer from SAKEC's AI & DS batch (2024 passout) also active in the Hack2skill hackathon community group shared with Sanchay.",
+      "card_category": "fellow",
+      "card_relationship": "College peer from SAKEC's AI & DS batch (2024 passout) also active in the Hack2skill hackathon community group shared with Sanchay.",
+      "card_company": null,
+      "card_title": null
+    },
+    {
+      "person_id": "161e9371-628e-40a5-ada8-a1ea9e09b2c5",
+      "llm_category": "fellow",
+      "llm_relationship": "Classmate or college peer from SAKEC's 2024-passout AI & DS batch; also a co-member of the Aurum workforce head/co-head group, suggesting shared student leadership activity.",
+      "card_category": "fellow",
+      "card_relationship": "Classmate or college peer from SAKEC's 2024-passout AI & DS batch; also a co-member of the Aurum workforce head/co-head group, suggesting shared student leadership activity.",
+      "card_company": null,
+      "card_title": null
+    },
+    {
+      "person_id": "906bc5b4-dd85-461f-bc08-829e578e9d3d",
+      "llm_category": "fellow",
+      "llm_relationship": "Member of the 'USA Fall 2024' group alongside Sanchay, suggesting a peer in a cohort of Indian students heading to the US in Fall 2024; saved with an affectionate emoji.",
+      "card_category": "fellow",
+      "card_relationship": "Member of the 'USA Fall 2024' group alongside Sanchay, suggesting a peer in a cohort of Indian students heading to the US in Fall 2024; saved with an affectionate emoji.",
+      "card_company": null,
+      "card_title": null
+    },
+    {
+      "person_id": "0f5c8779-7359-473a-b43d-6b64f274c449",
+      "llm_category": "community",
+      "llm_relationship": "PhD holder active in the Programming and Machine Learning Training groups who promotes a free Python-for-AI training program tied to charitable donations during Ramadan.",
+      "card_category": "community",
+      "card_relationship": "PhD holder active in the Programming and Machine Learning Training groups who promotes a free Python-for-AI training program tied to charitable donations during Ramadan.",
+      "card_company": null,
+      "card_title": "Ph.D."
+    },
+    {
+      "person_id": "0bd2e7d7-1188-4121-b7b4-4477f51aaa18",
+      "llm_category": "community",
+      "llm_relationship": "Active participant in the AI Video-Gen News and General Channel groups who shares AI video content and X/Twitter links; UAE-based based on phone number.",
+      "card_category": "community",
+      "card_relationship": "Active participant in the AI Video-Gen News and General Channel groups who shares AI video content and X/Twitter links; UAE-based based on phone number.",
+      "card_company": null,
+      "card_title": null
+    },
+    {
+      "person_id": "303ab096-2141-4e3e-ba1d-bda3211f866a",
+      "llm_category": "fellow",
+      "llm_relationship": "Member of both '1 - USA Fall 2024 🇺🇸🇮🇳' and '2 - USA Fall 2024 🇺🇸🇮🇳' groups shared with Sanchay, indicating a peer from the Indian students' Fall 2024 US intake cohort.",
+      "card_category": "fellow",
+      "card_relationship": "Member of both '1 - USA Fall 2024 🇺🇸🇮🇳' and '2 - USA Fall 2024 🇺🇸🇮🇳' groups shared with Sanchay, indicating a peer from the Indian students' Fall 2024 US intake cohort.",
+      "card_company": null,
+      "card_title": null
+    },
+    {
+      "person_id": "858dbbec-72f2-43dd-a543-91e4e0df8ea5",
+      "llm_category": "fellow",
+      "llm_relationship": "College peer from SAKEC (Shah and Anchor Kutchhi Engineering College) connected through the Vega Hackathon 2024, AI & DS batch, and Coding Club India groups.",
+      "card_category": "fellow",
+      "card_relationship": "College peer from SAKEC (Shah and Anchor Kutchhi Engineering College) connected through the Vega Hackathon 2024, AI & DS batch, and Coding Club India groups.",
+      "card_company": null,
+      "card_title": null
+    },
+    {
+      "person_id": "2d1bf9ee-08cb-4ab6-8b7d-c165a62b9f2b",
+      "llm_category": "team",
+      "llm_relationship": "Member of the 'CypherSOL IT Team' WhatsApp group shared with Sanchay, indicating a colleague on Sanchay's CypherSOL engineering team.",
+      "card_category": "team",
+      "card_relationship": "Member of the 'CypherSOL IT Team' WhatsApp group shared with Sanchay, indicating a colleague on Sanchay's CypherSOL engineering team.",
+      "card_company": "CypherSOL",
+      "card_title": null
+    },
+    {
+      "person_id": "305e2931-6acd-47fa-9f63-6b87498aae57",
+      "llm_category": "fellow",
+      "llm_relationship": "College peer from SAKEC's 2023-24 alumni batch, active in blockchain, AI & DS, and coding club groups shared with Sanchay; the 'Er.' prefix suggests an engineering graduate.",
+      "card_category": "fellow",
+      "card_relationship": "College peer from SAKEC's 2023-24 alumni batch, active in blockchain, AI & DS, and coding club groups shared with Sanchay; the 'Er.' prefix suggests an engineering graduate.",
+      "card_company": "SAKEC",
+      "card_title": "Engineer"
+    },
+    {
+      "person_id": "23a04316-f39d-45c4-8cdf-916f8299eb2b",
+      "llm_category": "fellow",
+      "llm_relationship": "Cohort peer from the 'USA Fall 2024' group, likely a fellow Indian student or professional preparing for or currently in a US program alongside Sanchay.",
+      "card_category": "fellow",
+      "card_relationship": "Cohort peer from the 'USA Fall 2024' group, likely a fellow Indian student or professional preparing for or currently in a US program alongside Sanchay.",
+      "card_company": null,
+      "card_title": null
+    },
+    {
+      "person_id": "59d9c94a-c63e-4cf2-b2a6-b1c043fe9dfc",
+      "llm_category": "friend",
+      "llm_relationship": "Contact shared in the 'The Empire State November 2023' group with Sanchay, suggesting a travel companion or acquaintance from a trip to New York in November 2023.",
+      "card_category": "friend",
+      "card_relationship": "Contact shared in the 'The Empire State November 2023' group with Sanchay, suggesting a travel companion or acquaintance from a trip to New York in November 2023.",
+      "card_company": null,
+      "card_title": null
+    },
+    {
+      "person_id": "9e90197b-3e5e-4b8f-8e47-d794e7d92015",
+      "llm_category": "community",
+      "llm_relationship": "Program coordinator at Samagra Governance's Code for GovTech (C4GT) initiative who emailed Sanchay with invitations to the DPG Dialogues 2025 and the DMP 2025 Closure Ceremony.",
+      "card_category": "community",
+      "card_relationship": "Program coordinator at Samagra Governance's Code for GovTech (C4GT) initiative who emailed Sanchay with invitations to the DPG Dialogues 2025 and the DMP 2025 Closure Ceremony.",
+      "card_company": "Samagra Governance",
+      "card_title": "Program Team, C4GT"
+    }
+  ],
+  "canary": {
+    "ok": true,
+    "diff": []
+  },
+  "ctxStats": {
+    "withDms": 79,
+    "withGroups": 455,
+    "withGroupMsgs": 115,
+    "withGmail": 76,
+    "empty": 897,
+    "withLid": 546
+  },
+  "before_dist": [
+    {
+      "cat": "other",
+      "n": 1470
+    },
+    {
+      "cat": "friend",
+      "n": 59
+    },
+    {
+      "cat": "founder",
+      "n": 19
+    },
+    {
+      "cat": "fellow",
+      "n": 16
+    },
+    {
+      "cat": "sponsor",
+      "n": 14
+    },
+    {
+      "cat": "team",
+      "n": 11
+    },
+    {
+      "cat": "community",
+      "n": 9
+    },
+    {
+      "cat": "media",
+      "n": 4
+    }
+  ],
+  "after_dist": [
+    {
+      "cat": "other",
+      "n": 1055
+    },
+    {
+      "cat": "fellow",
+      "n": 282
+    },
+    {
+      "cat": "friend",
+      "n": 101
+    },
+    {
+      "cat": "community",
+      "n": 90
+    },
+    {
+      "cat": "founder",
+      "n": 31
+    },
+    {
+      "cat": "sponsor",
+      "n": 20
+    },
+    {
+      "cat": "team",
+      "n": 18
+    },
+    {
+      "cat": "media",
+      "n": 5
+    }
+  ],
+  "notes": [
+    "Before dist: [{\"cat\":\"other\",\"n\":1470},{\"cat\":\"friend\",\"n\":59},{\"cat\":\"founder\",\"n\":19},{\"cat\":\"fellow\",\"n\":16},{\"cat\":\"sponsor\",\"n\":14},{\"cat\":\"team\",\"n\":11},{\"cat\":\"community\",\"n\":9},{\"cat\":\"media\",\"n\":4}]",
+    "Context stats: {\"withDms\":79,\"withGroups\":455,\"withGroupMsgs\":115,\"withGmail\":76,\"empty\":897,\"withLid\":546}",
+    "Pre-D quality sample: 0/50 vague (0%)."
+  ]
+}

@@ -1,0 +1,83 @@
+{
+  "session": "manifest-hypothesis-2026-04-19",
+  "verdict": "HYPOTHESIS_SUPPORTED",
+  "manifest": {
+    "path_on_claw": "/tmp/orbit-manifest-2026-04-19.ndjson",
+    "path_on_mac": "outputs/manifest-hypothesis-2026-04-19/orbit-manifest.ndjson",
+    "total_humans": 6883,
+    "file_size_bytes": 2062550,
+    "file_size_mb": 1.97,
+    "sha256": "1830f209e642b66364de105c8e2de9f4cb9a6bcfdb3b99c42a2b7bc1135c9396"
+  },
+  "m1_build_cost": {
+    "wall_clock_seconds": 0.74,
+    "user_seconds": 0.99,
+    "system_seconds": 0.15,
+    "cpu_pct": 153,
+    "peak_rss_kb": 143568,
+    "peak_rss_mb": 140.2
+  },
+  "m2_shape": {
+    "total_humans": 6883,
+    "multi_source_buckets": 2027,
+    "multi_source_pct": 29.4,
+    "single_source_buckets": 4856,
+    "single_source_pct": 70.6,
+    "bucket_size_p50": 2,
+    "bucket_size_p95": 2,
+    "bucket_size_max": 2,
+    "top_provenance_combos": {
+      "wa_contact_only": 4569,
+      "wa_contact+wa_group": 1329,
+      "wa_contact+wa_dm": 397,
+      "gmail_from_only": 216,
+      "google_contact+wa_contact": 185,
+      "google_contact_only": 71,
+      "google_contact+wa_contact+wa_dm": 46,
+      "wa_contact+wa_dm+wa_group": 41,
+      "all_four_sources": 21,
+      "google_contact+wa_contact+wa_group": 8
+    }
+  },
+  "m3_sample_audit": {
+    "n": 20,
+    "CLEAN": 4,
+    "UNRESOLVABLE_SINGLETON": 12,
+    "MISSING_BRIDGE": 4,
+    "WRONG_MERGE": 0,
+    "BOT_LEAK": 0,
+    "NAME_LEAK": 0,
+    "corpus_level_issues_outside_sample": [
+      {"kind": "BOT_LEAK", "example": "account-info@skydo.com (Skydo) — localpart 'account-info' not in regex"},
+      {"kind": "NAME_LEAK", "example": "'digital ocean' displayName attached to shamlata@cyphersol.co.in — forward-through pattern"},
+      {"kind": "NAME_LEAK", "example": "'Hotel Lancaster through Booking.com' at 6889421611-n8vr@property.booking.com — OTA reply-to"}
+    ]
+  },
+  "m4_jq_discovery_demos": {
+    "q1_sinxsolutions_ai": {"lines_returned": 1, "time_seconds": 0.06},
+    "q2_thread_count_ge_50": {"lines_returned": 5, "time_seconds": 0.057},
+    "q3_gmail_only_no_wa": {"lines_returned": 216, "time_seconds": 0.058}
+  },
+  "m5_delta_cost": {
+    "deterministic": true,
+    "bytes_diff_between_runs": 0,
+    "sha256_match": true,
+    "second_run_wall_seconds": 0.74
+  },
+  "m6_per_seed_tool_call_collapse": {
+    "seed": "Umayr — 971586783040@s.whatsapp.net / usheik@sinxsolutions.ai",
+    "path_a_without_manifest_min": 13,
+    "path_a_without_manifest_typical": 30,
+    "path_b_with_manifest_identity_only": 3,
+    "path_b_with_manifest_plus_bodies": "3 + N_thread_bodies",
+    "collapse_ratio_min": "13→3 (4.3×)",
+    "collapse_ratio_typical": "30→3+N (10×+ for identity, ~2-3× for full-card)",
+    "caveat": "Thread-body fetch doesn't collapse — still one call per thread you summarize. Manifest collapses IDENTITY work, not content work."
+  },
+  "claims_verdict": {
+    "claim_1_tool_call_collapse": "SUPPORTED (13→3 minimum, scales to 10× for typical seed)",
+    "claim_2_jq_debuggable": "SUPPORTED — Umayr's WA/Gmail split visible in a single jq call; bot-leak and name-leak issues surfaced at file level",
+    "claim_3_cheap_delta": "SUPPORTED — deterministic, byte-identical reruns at 0.74s",
+    "claim_4_db_free_discovery": "SUPPORTED — all three demo queries ran <100ms against 2MB file"
+  }
+}

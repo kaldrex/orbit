@@ -1,0 +1,112 @@
+{
+  "verdict": "ALL_THREE_FIXES_WORK",
+  "date": "2026-04-19",
+  "before": {
+    "manifest_path": "outputs/manifest-hypothesis-2026-04-19/orbit-manifest.ndjson",
+    "sha256": "1830f209e642b66364de105c8e2de9f4cb9a6bcfdb3b99c42a2b7bc1135c9396",
+    "human_count": 6883,
+    "skydo_bucket_count": 5,
+    "digital_ocean_name_count": 1,
+    "umayr_bucket_count": 2,
+    "gmail_dropped_bulk_or_bot": 1181
+  },
+  "after": {
+    "manifest_path": "outputs/fixes-applied-2026-04-19/orbit-manifest-v2.ndjson",
+    "sha256": "9381065e3cada0fd2bd95586f37d9003d1ff599d32c4824cb2982d5e21e0e0d4",
+    "human_count": 6837,
+    "skydo_bucket_count": 4,
+    "digital_ocean_name_count": 0,
+    "umayr_bucket_count": 1,
+    "gmail_dropped_bulk_or_bot": 1199,
+    "cross_channel_name_match_count": 33,
+    "layer2_bridge_merges_total": 36
+  },
+  "delta": {
+    "human_count": -46,
+    "skydo_bucket_count": -1,
+    "digital_ocean_name_count": -1,
+    "umayr_bucket_count": -1,
+    "gmail_dropped_bulk_or_bot": 18
+  },
+  "fixes_applied": {
+    "fix_1_bot_leak_account_info": {
+      "status": "FIXED",
+      "evidence": "account-info@skydo.com now classified bot at Gmail ingress; additional compound bot localparts like -noreply, -alerts, -bounces also caught",
+      "regex_extended": "^(noreply|no-reply|do-not-reply|donotreply|mailer-daemon|mailer|notify|notifications?|alerts?|support|billing|billing-?info|hello|help|security|updates?|digest|newsletter|info|team|account-?info|accounts?|receipts?|statements?|invoices?|bounces?)$",
+      "contains_regex_added": "(^|[-_.])(noreply|no-reply|donotreply|do-not-reply|mailer-daemon|notifications?|alerts?|bounces?|mailer)([-_.]|$)"
+    },
+    "fix_2_name_leak_digital_ocean": {
+      "status": "FIXED",
+      "evidence": "stripForwardedChainName drops SaaS vendor display names when they appear on non-vendor email domains; 'digital ocean' no longer appears as a bucket name anywhere",
+      "helper_fn": "stripForwardedChainName(from_name, from_email) -> cleaned_name | null",
+      "vendor_blocklist_size": 42
+    },
+    "fix_3_cross_channel_split_umayr": {
+      "status": "FIXED",
+      "evidence": "Umayr WA bucket (phone + LID + 6 groups) merged with Gmail bucket (usheik@sinxsolutions.ai) via Layer 2 fuzzy-name bridge; single record with all 5 provenance flags + cross_channel_name_match: true",
+      "threshold": 0.85,
+      "single_token_threshold": 0.92,
+      "multi_token_shared_guard": 2,
+      "generic_name_blocklist": "GENERIC_FIRST_NAMES + SAAS_VENDOR_NAMES",
+      "total_merges_across_corpus": 33
+    },
+    "fix_4_positive_source_lid_rule": {
+      "status": "CODIFIED_IN_PLUGIN",
+      "evidence": "phoneForContact ignores contacts.phone for @lid jids; session.db whatsmeow_lid_map is the only valid source. Already inlined in manifest-gen v1; now reusable.",
+      "fn": "phoneForContact({row, lidMap, db_path_override})"
+    },
+    "fix_5_seed_filter": {
+      "status": "CODIFIED_IN_PLUGIN",
+      "evidence": "isResolvableLidContact drops @lid rows with no name and no lidMap bridge. Already inlined in manifest-gen v1 (dropped 4,985 ghosts); now reusable.",
+      "fn": "isResolvableLidContact(row, lidMap)"
+    }
+  },
+  "regression_check": {
+    "hardeep_gambhir": "5-source merged record (wa_dm+wa_contact+wa_group+gmail_from+google_contact) — bridge added hardeep@localhosthq.com correctly",
+    "ramon_b": "Bridged to ramongberrios@gmail.com correctly; ramon@castmagic.io remains separate as expected",
+    "imran_sable": "Two gmail-only buckets preserved (different emails, ambiguous); Imran Sir WA bucket separate"
+  },
+  "determinism": {
+    "runs": 2,
+    "sha_match": true,
+    "wall_clock_claw": "3.4s"
+  },
+  "tests": {
+    "total": 148,
+    "new": 40,
+    "all_passing": true
+  },
+  "artifacts": {
+    "plugin_lib_new": [
+      "orbit-rules-plugin/lib/forwarded.mjs",
+      "orbit-rules-plugin/lib/bridge.mjs"
+    ],
+    "plugin_lib_extended": [
+      "orbit-rules-plugin/lib/domain.mjs",
+      "orbit-rules-plugin/lib/lid.mjs"
+    ],
+    "plugin_data_extended": [
+      "orbit-rules-plugin/data/domains.json"
+    ],
+    "plugin_tools_registered": [
+      "orbit_rules_strip_forwarded_chain_name",
+      "orbit_rules_cross_channel_bridge",
+      "orbit_rules_phone_for_contact",
+      "orbit_rules_is_resolvable_lid_contact"
+    ],
+    "manifest_v2": "outputs/fixes-applied-2026-04-19/orbit-manifest-v2.ndjson",
+    "claw_deployed_to": "~/.openclaw/plugins/orbit-rules/"
+  },
+  "surprises": [
+    "Google Contacts is phone-keyed in Sanchay's corpus, so WA-side buckets often include google_contact in provenance. Bridge filter relaxed from 'strict only-WA provenance' to 'has at least one WA/google_contact signal and NO gmail signal'.",
+    "googleone-out-of-quota-noreply@google.com escaped the anchored ^noreply$ regex. Added contains-regex for compound bot localparts.",
+    "WhatsApp labels like 'Amazon', 'Google' would bridge to vendor bot emails. Added SaaS vendor blocklist to isGenericName.",
+    "'Amazon.in' (Gmail sender name) tokenizes to [amazon, in]; added token-level vendor check for ≤2-token names."
+  ],
+  "guardrails": {
+    "posted_to_orbit": false,
+    "invoked_openclaw_agent": false,
+    "added_llm_api_key": false,
+    "prior_tests_broken": 0
+  }
+}

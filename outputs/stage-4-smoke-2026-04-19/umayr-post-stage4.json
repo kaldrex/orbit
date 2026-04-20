@@ -1,0 +1,65 @@
+{
+  "person_id": "67050b91-5011-4ba6-b230-9a387879717a",
+  "name": "Umayr Sheik",
+  "company": "SinX Solutions",
+  "title": "Founder",
+  "category": "team",
+  "phones": [
+    "+971586783040"
+  ],
+  "emails": [
+    "usheik@sinxsolutions.ai",
+    "usheik@weddingdai.com",
+    "umayrsheik@gmail.com"
+  ],
+  "relationship_to_me": "Close friend and tech peer based in Dubai. One of the few people Sanchay considers a match for deep AI/ML discussions. Connected Feb 2025; became close quickly through regular WhatsApp DMs.",
+  "last_touch": "2026-04-16T16:45:57+00:00",
+  "one_paragraph_summary": "Close friend and tech peer based in Dubai. One of the few people Sanchay considers a match for deep AI/ML discussions. Connected Feb 2025; became close quickly through regular WhatsApp DMs. · Regular DM covering AI/tech discussions, personal life updates, movie recs, and mutual project coordination",
+  "observations": {
+    "interactions": [
+      {
+        "id": "35b21655-cfaa-4a80-8041-130a9335f4e1",
+        "observed_at": "2025-02-13T12:01:16+00:00",
+        "kind": "interaction",
+        "evidence_pointer": "gmail://message-id/<CAPAR3sQRhsA6CAKFLk7bawjUw_ZtdbrF+uLhY4GJbnjtoCWZ4g@mail.gmail.com>",
+        "confidence": 0.95,
+        "summary": "Initial introductory call scheduling that led to moving to WhatsApp and the start of their friendship"
+      },
+      {
+        "id": "bb7ac3f0-115e-4682-b85f-02cb2b6324d7",
+        "observed_at": "2025-05-15T05:28:02+00:00",
+        "kind": "interaction",
+        "evidence_pointer": "gmail://message-id/<CAJgyvyB1DD8jjLTt-Oecc0WUUxPDORZG=VgLqs26Mmdkd_Beyg@mail.gmail.com>",
+        "confidence": 0.95,
+        "summary": "Sanchay forwarded an exclusive San Francisco event invite from Limitless AI to Umayr"
+      },
+      {
+        "id": "fcbeefdd-87e5-4379-b08d-b30f86878ad3",
+        "observed_at": "2025-12-27T17:31:46+00:00",
+        "kind": "interaction",
+        "evidence_pointer": "gmail://message-id/<CAJgyvyA=P_Yr7=3jWCttfUMKWJjzYZVZrUa6uO=cSLDxX7Fn2A@mail.gmail.com>",
+        "confidence": 0.95,
+        "summary": "Sanchay reached out to reconnect after a communication gap, expressing he misses their tech conversations"
+      },
+      {
+        "id": "35857d4b-24e9-42da-82f3-c229e4fc2fc6",
+        "observed_at": "2026-04-16T16:45:57+00:00",
+        "kind": "interaction",
+        "evidence_pointer": "wacli://messages/chat=971586783040@s.whatsapp.net",
+        "confidence": 0.95,
+        "summary": "Regular DM covering AI/tech discussions, personal life updates, movie recs, and mutual project coordination"
+      }
+    ],
+    "recent_corrections": [
+      {
+        "id": "9fa01b39-ba65-4e4c-94d0-d7a0491fc7d3",
+        "observed_at": "2026-04-19T08:43:52.377+00:00",
+        "kind": "correction",
+        "evidence_pointer": "human://telegram/1776588232377",
+        "confidence": 1,
+        "summary": "category -> \"team\""
+      }
+    ],
+    "total": 6
+  }
+}

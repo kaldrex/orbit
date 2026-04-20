@@ -1,0 +1,154 @@
+{
+  "session": "recon-2026-04-19-fundamentals",
+  "verdict": "CRACKS_AT_name_and_gmail_single_source",
+  "run_against": {
+    "wacli_db": "~/.wacli/wacli.db",
+    "session_db": "~/.wacli/session.db",
+    "gmail_ndjson": "~/.orbit-export/gmail-wide-20260418.messages.ndjson",
+    "google_contacts": "~/.orbit-export/google-contacts-20260418.ndjson"
+  },
+  "probe1_population": {
+    "wacli_total_messages": 33105,
+    "wacli_dm_chats": 507,
+    "wacli_group_chats": 193,
+    "wacli_total_chats": 878,
+    "wacli_distinct_dm_counterparts": 507,
+    "wacli_distinct_group_senders_phone_form": 46,
+    "wacli_distinct_group_senders_lid_form_raw": 1377,
+    "wacli_distinct_group_senders_lid_form_bare": 1356,
+    "wacli_contacts_total": 11822,
+    "wacli_contacts_with_full_name": 450,
+    "wacli_contacts_with_push_name": 1164,
+    "wacli_contacts_with_phone_column_populated": 11822,
+    "wacli_contacts_lid_jid": 9975,
+    "wacli_contacts_lid_jid_phone_is_just_lid_digits": 9948,
+    "wacli_contacts_lid_jid_with_no_name_at_all": 9836,
+    "session_whatsmeow_lid_map_rows": 14995,
+    "gmail_messages_total": 2002,
+    "gmail_distinct_from_addresses": 209,
+    "gmail_distinct_thread_ids": 1229,
+    "gmail_messages_with_bulk_headers": 48,
+    "google_contacts_total": 342,
+    "google_contacts_distinct_phones_canonical": 331,
+    "google_contacts_distinct_emails": 3,
+    "google_contacts_with_both_phone_and_email": 0
+  },
+  "probe2_rule_coverage": {
+    "dm_counterpart_e164_valid_pct": 99.8,
+    "dm_counterpart_invalid_sample": ["0@s.whatsapp.net"],
+    "lid_group_senders_bridged_pct": 99.85,
+    "lid_group_senders_unbridged_sample": ["91406232215803", "213378941358293"],
+    "gmail_from_canonicalize_pct": 100.0,
+    "gmail_from_classified_bot_pct": 26.79,
+    "gmail_from_classified_bot_count": 56,
+    "gmail_msgs_with_bulk_headers_pct": 2.4,
+    "wa_contacts_canonical_phones": 2025,
+    "google_contacts_canonical_phones": 334,
+    "wa_x_google_contacts_phone_overlap": 260,
+    "wa_x_google_contacts_phone_overlap_pct_of_smaller": 77.84,
+    "gmail_from_canonical_emails": 209,
+    "google_contacts_canonical_emails": 3,
+    "gmail_x_google_contacts_email_overlap": 0
+  },
+  "probe3_union_find_merge": {
+    "total_observations": 14930,
+    "total_buckets": 11804,
+    "singletons": 9698,
+    "singletons_pct": 82.16,
+    "multi_source_buckets": 2010,
+    "multi_source_buckets_pct": 17.03,
+    "bucket_size_mean": 1.26,
+    "bucket_size_median": 1,
+    "bucket_size_p95": 2,
+    "bucket_size_max": 388,
+    "wrong_merge_candidates_count": 2,
+    "wrong_merge_all_benign": true
+  },
+  "probe4_topology_seeds": {
+    "s1_high_volume_cross_source": {
+      "status": "yes",
+      "dm_chats_over_100_msgs": 15,
+      "note": "Umayr 3371, +17874244135 1909, +918104020294 1067 — plenty of material"
+    },
+    "s2_high_volume_wa_only": {
+      "status": "yes",
+      "note": "Of top-10 DMs, most have no Gmail trail. Natural WA-only seeds."
+    },
+    "s3_lid_only_group_sender": {
+      "status": "partial",
+      "lid_senders_over_20_msgs": 111,
+      "note": "111 active LID-only group senders; 99.85% bridge to phone via lid_map — so almost no truly LID-only top seeds. The unbridged tail (2 bare LIDs) are the real test."
+    },
+    "s4_gmail_heavy": {
+      "status": "yes_but_thin",
+      "non_bulk_gmail_senders_over_5_msgs": 40,
+      "top_human_senders": ["cyphersolfin@gmail.com:67", "ramongberrios@gmail.com:39", "dj@openblocklabs.com:15"],
+      "note": "40 total, ~15-20 after dropping bot-patterns that slipped through; Sanchay's own outbound is the #1 bucket (388)"
+    },
+    "s5_dormant_then_recent": {
+      "status": "no",
+      "count": 0,
+      "note": "Zero DM chats match (last-30d activity AND prior activity > 365d before). Corpus is too shallow — earliest ts 2022-11-11, but there's no genuine dormant-then-reawakened pattern yet."
+    }
+  },
+  "probe5_adversarial_grades": {
+    "CLEAN": 10,
+    "UNRESOLVABLE_SINGLETON": 9,
+    "WRONG_MERGE": 0,
+    "BOT_LEAK": 0,
+    "NAME_LEAK": 0,
+    "MISSING_BRIDGE": 1,
+    "note": "1 missing-bridge = wa_contact w/ valid phone but no corresponding wa_dm or Google Contact entry — likely a real human but thin. 0 wrong-merges after @lid-phone-column fix."
+  },
+  "cracks_identified": [
+    {
+      "id": "crack-1",
+      "name": "unresolvable_nameless_lid_only_contacts",
+      "severity": "high",
+      "metric": "4985 nameless @lid contacts have no lid_map entry and no name — 42% of contacts are undifferentiated sludge",
+      "impact_on_pipeline": "Deterministic layer cannot produce any card for these. They will always be empty-bucket singletons. Must be filtered out of the seed list, not fed into the resolver.",
+      "fix_before_cli": "Add a seed filter: drop @lid contacts where full_name AND push_name AND first_name are all empty AND lid_map lookup fails. Do NOT try to build cards for these — they are WhatsApp-only group lurkers, not relationships."
+    },
+    {
+      "id": "crack-2",
+      "name": "contact_phone_column_echoes_lid_digits",
+      "severity": "high_if_unfixed",
+      "metric": "9948 of 9975 @lid contacts have phone column = LID digits, not a real phone. Without guard, this creates hallucinated E.164 numbers (+88888945160252 etc.) and produces 31 fake wrong-merges in union-find.",
+      "impact_on_pipeline": "Poisons cross-source bucketing. Found and guarded in this recon — but any future code that reads contacts.phone without the guard re-introduces the bug.",
+      "fix_before_cli": "Codify guard in observer/orbit-rules: if jid ends @lid, ignore phone column unless the digits differ from the LID. Add a unit test."
+    },
+    {
+      "id": "crack-3",
+      "name": "gmail_only_buckets_never_join_wa",
+      "severity": "medium",
+      "metric": "0 overlap between 209 Gmail From canonical emails and 3 Google Contacts emails. Gmail and WhatsApp live on disjoint bridge keys (email vs phone).",
+      "impact_on_pipeline": "A card for a Gmail-heavy human (Ramon, Daljeet) gets BUILT from Gmail alone. WA-heavy buckets are BUILT from WA alone. Joining them requires either a) name+context inference by LLM (the 20% resolver layer) or b) richer Google Contacts exports with both phone+email per contact (currently zero).",
+      "fix_before_cli": "Expected. This is exactly where the LLM resolver earns its keep. NOT a deterministic-layer failure. But document: cross-channel join is an LLM step, not a deterministic step."
+    },
+    {
+      "id": "crack-4",
+      "name": "google_contacts_export_missing_emails",
+      "severity": "medium",
+      "metric": "Only 3 of 342 Google Contacts have an email address in the current export. 0 contacts have both a phone AND an email.",
+      "impact_on_pipeline": "Eliminates the one mechanical bridge between WA (phone) and Gmail (email). Without it, every cross-channel merge depends on LLM inference.",
+      "fix_before_cli": "Verify: does gws fetch all Google Contacts fields, or is it stripping emails? Re-run gws with field-mask including emailAddresses. If the export really has only 3 emails in ground truth, move on — Sanchay's Google Contacts simply don't have emails."
+    },
+    {
+      "id": "crack-5",
+      "name": "bulk_header_filter_weaker_than_localpart_rule",
+      "severity": "low",
+      "metric": "Bulk-header drop (list-unsubscribe + precedence:bulk) removes only 2.4% of gmail messages. Localpart+domain bot classifier removes 26.79% of distinct senders.",
+      "impact_on_pipeline": "Bulk-header check is almost superfluous — the cyphersol/skydo/luma/accounts.dev noreply senders don't set List-Unsubscribe. The localpart rule is the real workhorse. Not a crack — just a note that the bulk-header filter is redundant and could be cheaper.",
+      "fix_before_cli": "Optional. Keep both for belt-and-suspenders; they're essentially free."
+    },
+    {
+      "id": "crack-6",
+      "name": "no_dormant_then_recent_pattern_in_corpus",
+      "severity": "informational",
+      "metric": "0 DM chats match the dormant-then-reawakened seed pattern (Seed 5 from EDA).",
+      "impact_on_pipeline": "Can't test the 'going-cold' card flavor at this time. Either (a) Sanchay genuinely has no reawakened dormant relationships in the current corpus, or (b) the corpus is WA-only and doesn't yet include Gmail/Calendar which might show it. Defer: test going-cold once Gmail is included as a channel signal.",
+      "fix_before_cli": "Drop Seed 5 from the initial end-to-end test set. Re-add once we have multi-channel observations."
+    }
+  ],
+  "verdict_detail": "Deterministic rule coverage is EXCELLENT where the rules apply (99.8% phone normalize, 99.85% LID bridge, 100% email canonicalize, 26.8% bot drop). Cross-source joining is shallow because Sanchay's Google Contacts export contains almost no emails — so there is no mechanical bridge between WhatsApp (phone-keyed) and Gmail (email-keyed). This is a DATA PROPERTY, not a rule failure. The 82% singleton rate reflects reality: most WA contacts are LID-only group lurkers with no name and no phone bridge. The deterministic layer correctly refuses to invent identities for them. What the CLI/resolver work must add: (1) seed filtering that drops unresolvable lurkers before any LLM call, (2) explicit LLM-step for WA<->Gmail cross-channel join, (3) enforced @lid-phone-column guard as a unit-tested rule."
+}

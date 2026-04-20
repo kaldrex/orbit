@@ -1,5 +1,7 @@
 # 09 · Data-Gathering Session Hand-off
 
+> **STATUS: historical (2026-04-18 handoff). Superseded by [10-eda-findings-2026-04-19.md](./10-eda-findings-2026-04-19.md) and [11-v0-pipeline-handoff-2026-04-19.md](./11-v0-pipeline-handoff-2026-04-19.md).** Retained as the brief that seeded the EDA session.
+>
 > Brief for the next session, dedicated to **understanding the data** before
 > we design schemas, wire shapes, or connector logic. Read in full before
 > SSH'ing or inspecting anything.

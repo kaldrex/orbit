@@ -14,6 +14,10 @@ const PRESS = new Set(CORPUS.press);
 const BOT_LOCALPART_PATTERNS = (CORPUS.bot_patterns ?? []).map(
   (p) => new RegExp(p, "i"),
 );
+const BOT_SUBDOMAIN_PREFIXES = CORPUS.bot_subdomain_prefixes ?? [];
+const BOT_SUBDOMAIN_RE = BOT_SUBDOMAIN_PREFIXES.length
+  ? new RegExp(`^(${BOT_SUBDOMAIN_PREFIXES.join("|")})\\.`, "i")
+  : null;
 
 /**
  * Classify a domain (or optionally an email whose local-part we can
@@ -42,10 +46,18 @@ export function domainClass({ domain, localpart_for_bot_check }) {
         return { class: "bot", confidence: 0.85, evidence: `local-part matches ${re.source}` };
       }
     }
+    // Compound bot localparts: "googleone-out-of-quota-noreply@google.com",
+    // "cs-support-team@x.com". Match bot tokens surrounded by separators.
+    if (/(^|[-_.])(noreply|no-reply|donotreply|do-not-reply|mailer-daemon|notifications?|alerts?|bounces?|mailer)([-_.]|$)/i.test(lp)) {
+      return { class: "bot", confidence: 0.85, evidence: "compound localpart bot token" };
+    }
   }
 
   if (BOT.has(d)) {
     return { class: "bot", confidence: 0.95, evidence: "domain in bot list" };
+  }
+  if (BOT_SUBDOMAIN_RE && BOT_SUBDOMAIN_RE.test(d)) {
+    return { class: "bot", confidence: 0.9, evidence: "bot subdomain prefix" };
   }
   if (PERSONAL.has(d)) {
     return { class: "personal", confidence: 0.95, evidence: "domain in personal list" };

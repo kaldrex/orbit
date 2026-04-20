@@ -1,5 +1,7 @@
 # 10 · EDA Findings — 2026-04-19 session
 
+> **STATUS: historical (2026-04-19 EDA). The findings here seeded the V0 pipeline in [11-v0-pipeline-handoff-2026-04-19.md](./11-v0-pipeline-handoff-2026-04-19.md) and the current clean-DB state in [14-cleanup-2026-04-20.md](./14-cleanup-2026-04-20.md).** Retained as the canonical dataset recon (LID dominance, Umayr dossier, topology seeds).
+>
 > Handoff from the data-gathering session requested in [09-data-gathering-handoff.md](./09-data-gathering-handoff.md).
 > Written when Sanchay cut the session short and re-routed execution to himself / a future session.
 > No code shipped. Findings + design decisions + honest notes on what the agent got wrong.

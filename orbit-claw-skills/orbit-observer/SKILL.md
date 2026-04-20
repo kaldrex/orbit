@@ -21,7 +21,7 @@ metadata: {"openclaw":{"emoji":"🔭"}}
 ## Safety
 
 - Read-only against `wacli`, `gws`. Never call `wacli send` or `gws gmail send`.
-- Never write to Supabase directly. Go through Orbit's `POST /api/v1/observations`.
+- Never write to Supabase directly. Go through the `orbit_observation_emit` tool from the orbit-cli plugin (never construct raw HTTP).
 - Drop observations about bots / newsletters — see §safety drops below.
 - Never emit more than one `kind:"interaction"` observation per thread (KNOWS-edge rule below).
 
@@ -33,6 +33,11 @@ From the `orbit-rules` plugin (call these instead of re-implementing):
 - `orbit_rules_domain_class({domain, localpart_for_bot_check?})` → `{class, confidence, evidence}`
 - `orbit_rules_lid_to_phone({lid})` → `{phone, source_path}`
 - `orbit_rules_fuzzy_match({name_a, name_b})` → `{score, reason}`
+
+From the `orbit-cli` plugin (call these to write to Orbit — do NOT construct raw HTTP or curl in your prompt):
+- `orbit_observation_emit({observation})` → `{ok, accepted, inserted, deduped}` — send one observation envelope
+- `orbit_observation_bulk({file_path, concurrency?})` → `{total_lines, batches_posted, total_inserted, total_deduped, failed_batches}` — upload an NDJSON file of observations (for bulk ingests, not single-seed observer runs)
+- `orbit_person_get({person_id})` → `{card}` — read an existing person card
 
 From the existing skills:
 - `wacli chats list`, `wacli messages search`, `wacli contacts show`, `wacli groups list`
@@ -74,10 +79,11 @@ Given a seed (jid, phone, or email), do these in order:
    - For each unique human identified (with at least `phone` OR `email` canonical), emit ONE `kind:"person"` observation.
    - Include `phones[]`, `emails[]`, best `name`, inferred `company` (from email domain if `work` class), inferred `category`, 1-sentence `relationship_to_me`.
 
-8. **POST to Orbit.**
-   - URL: `${ORBIT_API_URL}/observations` (note: `ORBIT_API_URL` in env ends in `/api/v1`, so the path is just `/observations`).
-   - Header: `Authorization: Bearer ${ORBIT_API_KEY}`.
-   - Body: batches of ≤100 observations.
+8. **Emit each observation via `orbit_observation_emit`.**
+   - For every observation you've composed (`kind:"person"` or `kind:"interaction"`), call the `orbit_observation_emit` tool from the orbit-cli plugin with `{observation: <envelope>}`.
+   - The tool handles URL construction, auth header, validation, and error reporting. Do NOT build curl commands, URL strings, or raw HTTP in your prompt.
+   - It returns `{ok, accepted, inserted, deduped}`. If `inserted=0` and `deduped>0`, the server saw this observation before (idempotent dedup via server-computed key) — that's fine, continue.
+   - On error, the tool returns `{error: {status, message, body_preview}}`. Log it in your final summary; do NOT retry. Fix the envelope shape if validation failed, and move on to the next observation.
 
 ## Observation envelope (required fields)
 
@@ -163,6 +169,6 @@ Input: `orbit-observer scan --seed 971586783040@s.whatsapp.net`
 What you should produce:
 - ~20-30 `kind:"interaction"` observations (one per distinct WA thread with activity in last 30 days + Gmail threads)
 - 1 `kind:"person"` observation for Umayr, with phone, email, company, category, and a 1-2 sentence relationship summary.
-- POSTed to Orbit in one batch of ≤100.
+- Emitted via `orbit_observation_emit` per observation (~20-30 tool calls, one per observation envelope).
 
-If any step fails (wacli offline, gws token expired, POST returns 4xx), log the failure, don't fabricate, emit what you have, exit with a truthful summary.
+If any step fails (wacli offline, gws token expired, `orbit_observation_emit` returns an error envelope), log the failure, don't fabricate, emit what you have, exit with a truthful summary.

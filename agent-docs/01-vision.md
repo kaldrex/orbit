@@ -54,7 +54,7 @@ Not the graph. Not the feed. **One structured JSON record per human**, assembled
 
 The packet is the **response contract** OpenClaw and the UI both consume. Its shape is stable (identity, channels, relationship, segment, context, optionally narrative + known-others). What's *in* it evolves as the underlying graph and observations grow.
 
-The three fixtures in [tests/fixtures/golden-packets/](../tests/fixtures/golden-packets/) — Imran, Aryan, Hardeep — are **examples of the packet shape**, not acceptance contracts. They came from a pre-pivot analysis whose pipeline we rejected; we'll regenerate them once the new pipeline produces real output.
+The three fixtures in [tests/fixtures/golden-packets/](../tests/fixtures/golden-packets/) — Imran, Aryan, Hardeep — are **examples of the packet shape**, not acceptance contracts. They came from a pre-pivot analysis whose pipeline we rejected. The current contract is the live card assembler at [src/lib/card-assembler.ts](../src/lib/card-assembler.ts), feeding `GET /api/v1/person/:id/card`. Umayr + Ramon cards are the canaries preserved byte-identical across every pipeline change. The pre-V0 "golden packets as diff target" framing is archived at [archive/05-golden-packets.md](./archive/05-golden-packets.md).
 
 ## The hard problem: cross-source identity
 
@@ -89,5 +89,6 @@ Build for **fit and correctness**, not speed-to-ship. When the data model is a g
 
 - Architecture (layers + contracts): [02-architecture.md](./02-architecture.md)
 - Current state (what exists on disk today): [03-current-state.md](./03-current-state.md)
-- Data flow (first-time bootstrap + monitoring): [07-data-flow.md](./07-data-flow.md) *(to be written)*
-- Explicit open questions: [08-open-questions.md](./08-open-questions.md) *(to be written)*
+- End-to-end walkthrough (product + tech): [16-how-it-works-end-to-end.md](./16-how-it-works-end-to-end.md)
+- Strategic inventory + Neo4j case: [15-future-props.md](./15-future-props.md)
+- V0 pipeline narrative: [11-v0-pipeline-handoff-2026-04-19.md](./11-v0-pipeline-handoff-2026-04-19.md)

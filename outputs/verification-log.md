@@ -363,3 +363,107 @@ Artifacts:
 **Commit:** `49d534f` (observer+resolver SKILLs + plugin-entry loader fix) on branch `worktree-autonomous-2026-04-19`, not pushed.
 
 **Rollback:** not required — V0 artifacts are additive. To disable: `systemctl --user stop openclaw-gateway.service` on claw + `git checkout main` on dev Mac.
+
+---
+
+## 2026-04-19 — Stage 4: Observer-via-CLI smoke test
+
+**Claim:** "The observer SKILL rewritten to use `orbit_observation_emit` (instead of raw curl) still produces Umayr's card byte-identical to the 2026-04-19 baseline."
+
+**Investigation:** Invoked `openclaw agent --agent main` on claw with the updated SKILL (`orbit-claw-skills/orbit-observer/SKILL.md` post-rewrite, rsynced to `~/.openclaw/workspace/skills/orbit-observer/`). Seed: Umayr's WA JID `971586783040@s.whatsapp.net`. 22-second run. Fetched resulting card via plugin's `orbitPersonGet` library function.
+
+**Result:** PASS — `emitted=5 inserted=0 deduped=5` (correct idempotency: re-emitted content-hashed to the April-19 observations and no-op'd). Zero curl/HTTP strings in the transcript. `diff <(jq -S . baseline) <(jq -S . post-stage4)` → empty. Byte-identical.
+
+**Evidence:** `outputs/stage-4-smoke-2026-04-19/{openclaw-log.txt, umayr-post-stage4.json, card-diff.txt, report.md}`.
+
+**Rollback:** the SKILL edit is content-only; `git checkout -- orbit-claw-skills/orbit-observer/SKILL.md` reverts. No DB changes occurred.
+
+---
+
+## 2026-04-19 — Stage 5: Bulk ingest of 6,807 person observations
+
+**Claim:** "Transform `orbit-manifest-v3.ndjson` into zod-valid `kind:"person"` observations and bulk-POST via `orbit_observation_bulk`, landing ~6,800 observations in Supabase."
+
+**Investigation:** `scripts/manifest-to-observations.mjs` produced 6,807 observations (30 skipped for zero-identifier manifest lines). Dry-run via CLI `{dry_run: true}` → 6,807 pass / 0 fail. Real run chunked to 69 batches × 100, POSTed via Orbit API.
+
+**Result:** PARTIAL — all 6,807 observations inserted successfully, 0 batch failures. But `upsert_observations` RPC only materializes persons for `kind: "merge"|"split"|"correction"` — not `kind: "person"` — so `persons` table didn't grow. Correct per RPC contract, but required Stage 5b (below) to complete the ingest.
+
+**Evidence:** `outputs/stage-5-bulk-ingest-2026-04-19/{observations.ndjson, bulk-run-result.json, report.md}`.
+
+**Rollback:** destructive SQL `DELETE FROM observations WHERE evidence_pointer LIKE 'manifest://%'`. Executed later in Stage 5c.
+
+---
+
+## 2026-04-19 — Stage 5b: Merge emission to materialize persons
+
+**Claim:** "Emit one `kind:"merge"` observation per Stage-5 person observation to trigger the RPC's auto-materialization of `persons` + `person_observation_links` rows."
+
+**Investigation:** Read the 6,807 Stage-5 observation IDs via SQL. Generated 6,807 merge observations via `scripts/generate-merges-v2.mjs` (early version — not yet bridge-aware). Bulk-POST via CLI.
+
+**Result:** PASS (with caveat) — `persons` grew from 2 to 6,809. Umayr card byte-identical. BUT Umayr + Ramon were duplicated — Stage 5b minted new person_ids because the merger didn't check for pre-existing identity bridges. Flagged by audit, fixed in Stage 5c.
+
+**Evidence:** `outputs/stage-5b-merges-2026-04-19/{merges.ndjson, bulk-run-result.json, report.md}`.
+
+**Rollback:** destructive SQL (executed in Stage 5c).
+
+---
+
+## 2026-04-20 — Stage 5c: Clean re-ingest with safety + bridge-aware merging
+
+**Claim:** "Wipe the Stage-5/5b bulk inserts, re-ingest from v3 manifest with observer-safety rules applied at transform time, and use a bridge-aware merger so Umayr + Ramon collapse to their pre-existing April-19 person_ids."
+
+**Investigation:** Executed per `outputs/cleanup-plan-2026-04-20/plan.md` Phase B. `pg_dump` taken pre-wipe. `scripts/migrations/002-wipe-stage5-bulk.sql` reduced DB to `{persons: 2, observations kind=person: 2}`. Safety functions in new `orbit-rules-plugin/lib/safety.mjs` filtered 5,207 rows (phone-as-name, email-as-name, Unicode-masked phones, test-data leaks). `scripts/generate-merges-v2.mjs` (bridge-aware) queried existing `persons` before minting new IDs, collapsing Umayr + Ramon duplicates.
+
+**Result:** PASS across all 30 audit acceptance checks. Final DB: 1,602 persons (well above D7 floor of 1,500). 0 phone-as-name, 0 email-as-name, 0 Unicode-masked, 0 duplicate Umayr/Ramon. Umayr card byte-identical. Tests 196 → 329 green.
+
+**Evidence:** `outputs/cleanup-2026-04-20/{report.md, pg-dump-pre-wipe.sql, summary.json}`, `agent-docs/14-cleanup-2026-04-20.md`.
+
+**Commit:** uncommitted on `worktree-autonomous-2026-04-19` (user hasn't requested commit).
+
+**Rollback:** `psql $SUPABASE_DB_URL -f outputs/cleanup-2026-04-20/pg-dump-pre-wipe.sql` restores pre-wipe state.
+
+---
+
+## 2026-04-20 — Stage 6-v3: LLM enrichment, first honest pass
+
+**Claim:** "Batch-enrich all 1,598 skeleton persons (category='other', null relationship_to_me) with a `kind:"person"` observation carrying category + relationship_to_me + company/title. Use `session with context:` against OpenProse (Claude Sonnet) in batches. Write each enrichment as an append-only observation. Umayr + Ramon untouched."
+
+**Investigation:** `scripts/enricher-v3.mjs` + `enricher-v3-repost.mjs`. Three phases: (A) fetch skeleton persons + rank; (B) gather lightweight context per person (groups, top DMs, Gmail subjects); (C) batched LLM enrichment ~20 persons/turn; (D) POST via orbit_observation_bulk. One LLM batch failed mid-run; repost recovered it.
+
+**Result:** STAGE6_V3_PARTIAL → all 1,568 enrichments POSTed successfully on repost. 0 vague in 50-card sample. Umayr canary byte-identical (`diff:[]`). Cost $4.03 (input 352,514, output 198,119). Cache-hit rate 0% (system prompt under 2,048 tokens — cosmetic, didn't affect outcomes).
+
+**Evidence:** `outputs/stage-6-v3-2026-04-20/{summary.json, report.md, run.log, phase-timings.json, enriched-observations.ndjson}`.
+
+**Rollback:** `DELETE FROM observations WHERE user_id='dbb398c2-...' AND kind='person' AND evidence_pointer LIKE 'enricher-v3://%'` (the evidence pointer tags every Stage-6-v3 observation for clean rollback). Persons' category reverts to "other" on next card read.
+
+---
+
+## 2026-04-20 — Stage 6-v4: LID-aware enrichment, Fix #1
+
+**Claim:** "Re-enrich the 1,470 persons still at category='other' post-v3 by adding LID-bridge-resolved context (shared WA groups + group-message counts + joined Gmail threads). Hypothesis: v3 missed category signal because it couldn't join group context via LID. Expected lift: 400+ persons move from 'other' to real categories."
+
+**Investigation:** `scripts/enricher-v4.mjs`. Five phases: (A) target-set selection; (B) LID bridge (546 persons gained at least one bridge); (C) context-gathered ranking + batched LLM; (D) POST bulk; (E) audit. Same ~20-person batches, same Sonnet model, padded system prompt attempt for cache-hit (failed — still under threshold).
+
+**Result:** STAGE6_V4_PASS. 1,470/1,470 enriched, 0 failed batches. Umayr canary byte-identical. Cost $4.52. **Distribution shift: "other" dropped from 1,470 → 1,055 (−415). fellow: 16 → 282 (+266). friend: 59 → 101 (+42). community: 9 → 90 (+81). founder: 19 → 31 (+12). team: 11 → 18 (+7). sponsor/media: +7 combined.** Context coverage: 79 with DMs, 455 with groups, 115 with group messages, 76 with Gmail threads, 897 zero-signal (honest "other"), 546 with at least one LID bridge.
+
+**Evidence:** `outputs/stage-6-v4-2026-04-20/{summary.json, report.md, run.log, phase-timings.json, target-persons.ndjson, contexts-v4.ndjson, enriched-observations-v4.ndjson}`.
+
+**Commit:** uncommitted on `worktree-autonomous-2026-04-19`.
+
+**Rollback:** same pattern — `DELETE FROM observations WHERE user_id='dbb398c2-...' AND kind='person' AND evidence_pointer LIKE 'enricher-v4://%'`.
+
+**Open items:** prompt-cache never fired (v3 or v4) — cosmetic; cache optimization is future work not cost-critical at these batch sizes.
+
+---
+
+## 2026-04-20 — Docs refresh audit
+
+**Claim:** "Full agent-docs + CLAUDE.md audit, refresh stale content against live state (329 tests, 1,602 persons, 5 routes), archive superseded docs (04-roadmap, 05-golden-packets), backfill verification-log."
+
+**Investigation:** Verified live state via `npm test` (329/329), `psql` counts (1,602 persons), `curl /persons/enriched` (alive), `ls src/app/api/v1/` (5 routes). Decided per-doc verdict (fresh/edit/rewrite/archive). Rewrote CLAUDE.md + 02-architecture.md. Surgical edits to 03, 06, 11, 12, 13. Added status banners to historical 09, 10. Moved 04, 05 to `agent-docs/archive/` with superseded banners. Updated README + `docs/handoff/README.md` internal links.
+
+**Result:** PASS. 15 agent-docs audited, 1 rewritten (02), 6 stale-edited (03, 06, 11, 12, 13, CLAUDE.md), 2 archived (04, 05), 2 historical-banner-added (09, 10), 4 fresh-confirmed (01, 14, 15, 16), 1 index-updated (README.md). CLAUDE.md test count 26 → 329. 3-contract framing → 5-contract. Verification-log backfilled with Stage 6-v3 + 6-v4 + this row.
+
+**Evidence:** `outputs/docs-refresh-2026-04-20/{report.md, summary.json}`.
+
+**Rollback:** `git checkout -- agent-docs/ CLAUDE.md outputs/verification-log.md docs/handoff/README.md` restores pre-refresh state. Archived files: `mv agent-docs/archive/04-roadmap.md agent-docs/04-roadmap.md && mv agent-docs/archive/05-golden-packets.md agent-docs/05-golden-packets.md`.

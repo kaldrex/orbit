@@ -1,0 +1,79 @@
+{
+  "date": "2026-04-20",
+  "verdict": "DOCS_REFRESH_PASS",
+  "live_state_verified": {
+    "tests_passing": 329,
+    "test_files": 19,
+    "test_duration_s": 1.21,
+    "persons": 1602,
+    "observations": {
+      "person": 4646,
+      "merge": 1605,
+      "interaction": 7,
+      "correction": 1
+    },
+    "raw_events": 33105,
+    "category_distribution": {
+      "other": 1055,
+      "fellow": 282,
+      "friend": 101,
+      "community": 90,
+      "founder": 31,
+      "sponsor": 20,
+      "team": 18,
+      "media": 5
+    },
+    "api_routes_live": [
+      "POST /api/v1/raw_events",
+      "POST /api/v1/observations",
+      "GET /api/v1/observations",
+      "GET /api/v1/person/:id/card",
+      "POST /api/v1/person/:id/correct",
+      "GET /api/v1/persons/enriched"
+    ],
+    "rules_plugin_modules": 10,
+    "cli_plugin_verbs": 4,
+    "live_endpoint_check": "pass (/persons/enriched?limit=2)"
+  },
+  "docs_audited": 15,
+  "actions": {
+    "fresh": ["01-vision.md (minor fixups)", "14-cleanup-2026-04-20.md", "15-future-props.md", "16-how-it-works-end-to-end.md"],
+    "stale_edit": ["03-current-state.md", "06-operating.md", "09-data-gathering-handoff.md", "10-eda-findings-2026-04-19.md", "11-v0-pipeline-handoff-2026-04-19.md", "12-junk-filtering-system.md", "13-multi-tenant-onboarding.md", "README.md"],
+    "rewrite": ["CLAUDE.md", "02-architecture.md"],
+    "archive": ["04-roadmap.md", "05-golden-packets.md"]
+  },
+  "archived_paths": {
+    "agent-docs/04-roadmap.md": "agent-docs/archive/04-roadmap.md",
+    "agent-docs/05-golden-packets.md": "agent-docs/archive/05-golden-packets.md"
+  },
+  "new_files": [
+    "agent-docs/archive/ (directory)",
+    "outputs/docs-refresh-2026-04-20/summary.json"
+  ],
+  "verification_log_additions": [
+    "2026-04-20 — Stage 6-v3: LLM enrichment, first honest pass",
+    "2026-04-20 — Stage 6-v4: LID-aware enrichment, Fix #1",
+    "2026-04-20 — Docs refresh audit"
+  ],
+  "link_breakages_fixed": [
+    "docs/handoff/README.md:13 (04-roadmap → 14+15)",
+    "docs/README.md:16,20 (three contracts → 5-route API, six-track status)",
+    "agent-docs/README.md tables updated for archive paths",
+    "CLAUDE.md adds explicit 'Archived:' line pointing to new paths"
+  ],
+  "still_not_right": [
+    "Prompt-cache never fired in Stage 6-v3/v4 (cosmetic, not cost-critical)",
+    "UI scaffolding under src/app/dashboard/ + components/ still fetches long-deleted endpoints — tracked in Stage 8",
+    "Doc 15 is 206 lines (slightly over 200-line invariant) — grandfathered",
+    "Doc 11 is 388 lines (well over invariant) — preserved as historical narrative",
+    "docs/superpowers/specs/ + plans/ not reconciled against current 5-contract reality (separate spec-layer, out of scope)",
+    "Worktree left uncommitted per guardrails"
+  ],
+  "guardrails_observed": [
+    "No git commit",
+    "No code or test files modified",
+    "No memory/*.md touched",
+    "No dev server started",
+    "Numbers sourced from live DB/npm test, not fabricated"
+  ]
+}

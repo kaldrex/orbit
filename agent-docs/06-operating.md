@@ -32,26 +32,38 @@ Live streaming (2–3 events/sec, HTTP, rate-limited, authenticated) and bulk ba
 
 Writing "I'm about to do X" is not doing X. State what's true after the action, not what the action will be. This file is a rule, not a retrospective.
 
+### 8. The API is the only writer
+
+Nothing bypasses HTTP to touch `observations` / `persons` / `person_observation_links` directly from application code or agent skills. Every write originates from an agent skill calling the CLI, which calls the HTTP API. SSH-to-DB is dev scaffolding, not a product path. Memory entry: `project_api_is_only_writer.md`.
+
+### 9. CLI is plumbing
+
+The `orbit` CLI (in `orbit-cli-plugin/`) owns arg parsing, HTTP transport, batching, auth, output formatting — nothing else. All LLM judgment (category inference, `relationship_to_me` composition, per-thread topic/sentiment) stays inside observer/resolver/enricher SKILLs and runs in the founder's LLM prompt turn, funded by the founder's token budget. **The CLI binary never holds an `ANTHROPIC_API_KEY`.** If a proposed verb seems to need judgment, push that work back into a SKILL.md instead of teaching the CLI to think. Memory entry: `project_orbit_needs_its_own_cli_plugin.md`.
+
+### 10. Deterministic first, LLM batched for judgment
+
+80/20 split: rules/scripts do bulk phone/email/LID/dedup in seconds; the agent batches LLM only for category/summary/topic (20 persons per turn, not 500 sequential runs). Don't reach for an LLM until a rule can't do it. Memory entry: `project_scale_architecture_deterministic_first.md`.
+
 ## Standing authorities
 
 ### OK without asking
 
 - Additive Supabase migrations (new tables, functions, indexes)
+- **Destructive SQL on Supabase** — it's a test/clone environment (`project_supabase_is_test_env.md`). Take a `pg_dump` first as rollback.
 - SSH to claw for inspection or running read-only scripts
 - `npm install`, `npm test`, `npx next build`
 - Branch pushes to `origin`
-- Vercel prod deploys — no external users yet
+- Vercel prod deploys — no external users yet (production is currently torn down by design, `project_orbit_deployment_burned.md`)
 - Editing `.env.local` in either repo for new credentials
-- Moving files within `docs/` (including to/from `docs/archive/`)
+- Moving files within `docs/` (including to/from `docs/archive/` and `agent-docs/archive/`)
 
 ### Requires explicit go
 
 - **Credential rotation** — `ALTER USER`, password resets, API key resets
 - **Force-push** to `main` (or any shared branch)
-- **Destructive SQL** — `DROP`, `TRUNCATE`, any `DELETE` beyond a single-row fix
 - **Neo4j data deletion** — even though the graph is currently empty, ask before wiping a repopulated one
-- **Stopping services or removing files on `claw`** — affects the live VM
-- **Operations costing real money beyond spec budgets** — Track 4 LLM enrichment is capped at ~$520/founder/year; exceeding that warrants a conversation
+- **Stopping services or removing files on `claw`** — affects the live VM (`project_openclaw_role.md`)
+- **Operations costing real money beyond spec budgets** — Stage 6 enrichment budgeted at ~$5/founder one-shot + ~$2/month steady-state; exceeding that warrants a conversation
 
 When in doubt, stop and ask. The cost of pausing is low; the cost of an unwanted action can erase days of work.
 

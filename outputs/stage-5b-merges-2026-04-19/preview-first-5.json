@@ -1,0 +1,92 @@
+[
+  {
+    "observed_at": "2026-02-19T15:22:43.000Z",
+    "observer": "wazowski",
+    "kind": "merge",
+    "evidence_pointer": "merge://phone:+919582030575",
+    "confidence": 1,
+    "reasoning": "Deterministic manifest-sourced single-observation merge. Identity was already resolved at manifest generation via cross-source union-find (wa_dm+wa_contact+wa_group+gmail_from+google_contact+cross_channel_name_match). Materializing the person row. merged_observation_ids contains the source person-observation UUID twice to satisfy the schema's .min(2) length constraint; the DB's ON CONFLICT (person_id, observation_id) DO NOTHING collapses duplicates into a single link.",
+    "payload": {
+      "person_id": "590c2542-d413-4cc9-b806-542dc8a02cd9",
+      "merged_observation_ids": [
+        "0010fb52-2ad5-4a2f-8c06-026494b9e670",
+        "0010fb52-2ad5-4a2f-8c06-026494b9e670"
+      ],
+      "deterministic_bridges": [
+        "phone:+919582030575"
+      ]
+    }
+  },
+  {
+    "observed_at": "2026-04-19T16:37:37.358Z",
+    "observer": "wazowski",
+    "kind": "merge",
+    "evidence_pointer": "merge://phone:+917710870921",
+    "confidence": 1,
+    "reasoning": "Deterministic manifest-sourced single-observation merge. Identity was already resolved at manifest generation via cross-source union-find (wa_dm+wa_contact+wa_group+gmail_from+google_contact+cross_channel_name_match). Materializing the person row. merged_observation_ids contains the source person-observation UUID twice to satisfy the schema's .min(2) length constraint; the DB's ON CONFLICT (person_id, observation_id) DO NOTHING collapses duplicates into a single link.",
+    "payload": {
+      "person_id": "e1179e53-b71e-4453-adbc-ce7410ae18b2",
+      "merged_observation_ids": [
+        "001b54de-f468-4ccb-8cc3-ea6d989f9629",
+        "001b54de-f468-4ccb-8cc3-ea6d989f9629"
+      ],
+      "deterministic_bridges": [
+        "phone:+917710870921"
+      ]
+    }
+  },
+  {
+    "observed_at": "2026-04-14T08:39:43.000Z",
+    "observer": "wazowski",
+    "kind": "merge",
+    "evidence_pointer": "merge://phone:+919561450420",
+    "confidence": 1,
+    "reasoning": "Deterministic manifest-sourced single-observation merge. Identity was already resolved at manifest generation via cross-source union-find (wa_dm+wa_contact+wa_group+gmail_from+google_contact+cross_channel_name_match). Materializing the person row. merged_observation_ids contains the source person-observation UUID twice to satisfy the schema's .min(2) length constraint; the DB's ON CONFLICT (person_id, observation_id) DO NOTHING collapses duplicates into a single link.",
+    "payload": {
+      "person_id": "7a2d238e-6408-4ee7-a561-5bb475fed8f6",
+      "merged_observation_ids": [
+        "001e53f0-f1d2-48cd-83af-c607531cb63c",
+        "001e53f0-f1d2-48cd-83af-c607531cb63c"
+      ],
+      "deterministic_bridges": [
+        "phone:+919561450420"
+      ]
+    }
+  },
+  {
+    "observed_at": "2026-04-19T16:37:37.355Z",
+    "observer": "wazowski",
+    "kind": "merge",
+    "evidence_pointer": "merge://phone:+919892320366",
+    "confidence": 1,
+    "reasoning": "Deterministic manifest-sourced single-observation merge. Identity was already resolved at manifest generation via cross-source union-find (wa_dm+wa_contact+wa_group+gmail_from+google_contact+cross_channel_name_match). Materializing the person row. merged_observation_ids contains the source person-observation UUID twice to satisfy the schema's .min(2) length constraint; the DB's ON CONFLICT (person_id, observation_id) DO NOTHING collapses duplicates into a single link.",
+    "payload": {
+      "person_id": "30529f2a-7412-4e1f-b5da-80f004b43683",
+      "merged_observation_ids": [
+        "0029bfe1-c72c-4e96-8d32-a3b8cd61ded8",
+        "0029bfe1-c72c-4e96-8d32-a3b8cd61ded8"
+      ],
+      "deterministic_bridges": [
+        "phone:+919892320366"
+      ]
+    }
+  },
+  {
+    "observed_at": "2026-04-19T16:37:37.366Z",
+    "observer": "wazowski",
+    "kind": "merge",
+    "evidence_pointer": "merge://phone:+918126656402",
+    "confidence": 1,
+    "reasoning": "Deterministic manifest-sourced single-observation merge. Identity was already resolved at manifest generation via cross-source union-find (wa_dm+wa_contact+wa_group+gmail_from+google_contact+cross_channel_name_match). Materializing the person row. merged_observation_ids contains the source person-observation UUID twice to satisfy the schema's .min(2) length constraint; the DB's ON CONFLICT (person_id, observation_id) DO NOTHING collapses duplicates into a single link.",
+    "payload": {
+      "person_id": "6c826d06-4c41-4aed-8c4f-6ca19a69a058",
+      "merged_observation_ids": [
+        "003496a2-e981-4d6c-9395-14bc9203342b",
+        "003496a2-e981-4d6c-9395-14bc9203342b"
+      ],
+      "deterministic_bridges": [
+        "phone:+918126656402"
+      ]
+    }
+  }
+]

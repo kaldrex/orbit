@@ -1,0 +1,87 @@
+[1.4s] === Phase A START ===
+[3.2s] Phase A: wrote 1470 target persons
+[3.2s] === Phase A END (1.8s) ===
+[3.4s] === Phase B START ===
+[3.4s] Phase B: loaded lid_map — 14995 pn→lid entries
+[3.4s] Phase B: gmail index built — 314 emails
+[4.4s] Phase B: ctx=1470 withDMs=79 withGroups=455 withGroupMsgs=115 withGmail=76 empty=897 lidBridged=546
+[4.4s] === Phase B END (1.0s) ===
+[4.4s] === Phase C START ===
+[4.4s] Phase C: 49 batches × 30, concurrency 5
+[4.4s] Phase C: warming cache with batch 0...
+[66.8s] Phase C: warm batch ok (30 results, $0.0909, in=7399 out=4581 cW=0)
+[129.0s] Phase C: batch 2/49 ok (30 results, $0.0902, total $0.18, in=7773 out=4462 cR=0)
+[134.1s] Phase C: batch 5/49 ok (30 results, $0.0967, total $0.28, in=8576 out=4731 cR=0)
+[140.2s] Phase C: batch 4/49 ok (30 results, $0.0964, total $0.37, in=8530 out=4722 cR=0)
+[144.9s] Phase C: batch 6/49 ok (30 results, $0.0924, total $0.47, in=7380 out=4685 cR=0)
+[193.7s] Phase C: batch 8/49 ok (30 results, $0.0920, total $0.56, in=7982 out=4540 cR=0)
+[210.2s] Phase C: batch 10/49 ok (30 results, $0.0942, total $0.65, in=7545 out=4771 cR=0)
+[211.1s] Phase C: batch 7/49 ok (30 results, $0.0966, total $0.75, in=8390 out=4763 cR=0)
+[215.0s] Phase C: batch 9/49 ok (30 results, $0.0929, total $0.84, in=8368 out=4518 cR=0)
+[252.7s] Phase C: batch 3/49 ok (30 results, $0.0983, total $0.94, in=8991 out=4755 cR=0)
+[266.0s] Phase C: batch 13/49 ok (30 results, $0.0879, total $1.03, in=7632 out=4336 cR=0)
+[275.2s] Phase C: batch 11/49 ok (30 results, $0.0941, total $1.12, in=7905 out=4692 cR=0)
+[288.6s] Phase C: batch 12/49 ok (30 results, $0.0954, total $1.22, in=8399 out=4677 cR=0)
+[295.7s] Phase C: batch 14/49 ok (30 results, $0.0943, total $1.31, in=8552 out=4579 cR=0)
+[326.4s] Phase C: batch 15/49 ok (30 results, $0.0898, total $1.40, in=7155 out=4555 cR=0)
+[326.9s] Phase C: batch 16/49 ok (30 results, $0.0961, total $1.50, in=8899 out=4624 cR=0)
+[352.9s] Phase C: batch 17/49 ok (30 results, $0.0946, total $1.59, in=9132 out=4482 cR=0)
+[363.1s] Phase C: batch 18/49 ok (30 results, $0.0949, total $1.69, in=8377 out=4654 cR=0)
+[369.8s] Phase C: batch 19/49 ok (30 results, $0.0906, total $1.78, in=7966 out=4449 cR=0)
+[384.0s] Phase C: batch 20/49 ok (30 results, $0.0880, total $1.87, in=8117 out=4246 cR=0)
+[405.3s] Phase C: batch 21/49 ok (30 results, $0.0913, total $1.96, in=7622 out=4560 cR=0)
+[430.9s] Phase C: batch 22/49 ok (30 results, $0.0913, total $2.05, in=8117 out=4463 cR=0)
+[432.3s] Phase C: batch 23/49 ok (30 results, $0.0869, total $2.14, in=7610 out=4272 cR=0)
+[441.2s] Phase C: batch 24/49 ok (30 results, $0.0884, total $2.22, in=7944 out=4303 cR=0)
+[472.1s] Phase C: batch 26/49 ok (30 results, $0.0936, total $2.32, in=8046 out=4628 cR=0)
+[475.3s] Phase C: batch 25/49 ok (30 results, $0.1009, total $2.42, in=9485 out=4829 cR=0)
+[495.2s] Phase C: batch 28/49 ok (30 results, $0.0897, total $2.51, in=7214 out=4538 cR=0)
+[507.0s] Phase C: batch 29/49 ok (30 results, $0.0916, total $2.60, in=7648 out=4579 cR=0)
+[508.6s] Phase C: batch 27/49 ok (30 results, $0.0940, total $2.69, in=8614 out=4542 cR=0)
+[545.8s] Phase C: batch 31/49 ok (30 results, $0.0933, total $2.79, in=8479 out=4527 cR=0)
+[552.6s] Phase C: batch 30/49 ok (30 results, $0.0964, total $2.88, in=8263 out=4775 cR=0)
+[559.6s] Phase C: batch 32/49 ok (30 results, $0.0916, total $2.98, in=7906 out=4526 cR=0)
+[567.8s] Phase C: batch 34/49 ok (30 results, $0.0891, total $3.06, in=7228 out=4495 cR=0)
+[587.3s] Phase C: batch 33/49 ok (30 results, $0.0973, total $3.16, in=8668 out=4755 cR=0)
+[614.7s] Phase C: batch 35/49 ok (30 results, $0.0967, total $3.26, in=8684 out=4707 cR=0)
+[625.9s] Phase C: batch 37/49 ok (30 results, $0.0913, total $3.35, in=7878 out=4510 cR=0)
+[627.9s] Phase C: batch 36/49 ok (30 results, $0.0891, total $3.44, in=7413 out=4459 cR=0)
+[643.1s] Phase C: batch 38/49 ok (30 results, $0.0881, total $3.53, in=7652 out=4341 cR=0)
+[651.3s] Phase C: batch 39/49 ok (30 results, $0.0951, total $3.62, in=8510 out=4637 cR=0)
+[685.8s] Phase C: batch 41/49 ok (30 results, $0.0888, total $3.71, in=7631 out=4391 cR=0)
+[690.6s] Phase C: batch 40/49 ok (30 results, $0.0894, total $3.80, in=7713 out=4415 cR=0)
+[691.5s] Phase C: batch 42/49 ok (30 results, $0.0886, total $3.89, in=7472 out=4410 cR=0)
+[708.7s] Phase C: batch 44/49 ok (30 results, $0.0880, total $3.98, in=7320 out=4401 cR=0)
+[716.6s] Phase C: batch 43/49 ok (30 results, $0.0876, total $4.06, in=7045 out=4431 cR=0)
+[761.2s] Phase C: batch 45/49 ok (30 results, $0.0910, total $4.16, in=8143 out=4441 cR=0)
+[761.3s] Phase C: batch 47/49 ok (30 results, $0.0973, total $4.25, in=8342 out=4820 cR=0)
+[769.1s] Phase C: batch 46/49 ok (30 results, $0.0923, total $4.35, in=7192 out=4713 cR=0)
+[777.3s] Phase C: batch 48/49 ok (30 results, $0.0875, total $4.43, in=7980 out=4239 cR=0)
+[782.8s] Phase C: batch 49/49 ok (30 results, $0.0907, total $4.52, in=7542 out=4537 cR=0)
+[782.8s] Phase C done. enriched=1470/1470; failedBatches=0; cost=$4.523; aborted=no
+[782.8s] === Phase C END (778.5s) ===
+[782.8s] === Phase D START ===
+[782.9s] Phase D: wrote 1470 observations
+[784.6s] Phase D: batch 1/15 → inserted=100 deduped=0
+[785.5s] Phase D: batch 2/15 → inserted=100 deduped=0
+[786.4s] Phase D: batch 3/15 → inserted=100 deduped=0
+[787.3s] Phase D: batch 4/15 → inserted=100 deduped=0
+[788.1s] Phase D: batch 5/15 → inserted=100 deduped=0
+[789.0s] Phase D: batch 6/15 → inserted=100 deduped=0
+[789.9s] Phase D: batch 7/15 → inserted=100 deduped=0
+[790.9s] Phase D: batch 8/15 → inserted=100 deduped=0
+[791.8s] Phase D: batch 9/15 → inserted=100 deduped=0
+[792.9s] Phase D: batch 10/15 → inserted=100 deduped=0
+[793.8s] Phase D: batch 11/15 → inserted=100 deduped=0
+[794.7s] Phase D: batch 12/15 → inserted=100 deduped=0
+[795.7s] Phase D: batch 13/15 → inserted=100 deduped=0
+[796.5s] Phase D: batch 14/15 → inserted=100 deduped=0
+[797.4s] Phase D: batch 15/15 → inserted=70 deduped=0
+[797.4s] === Phase D END (14.6s) ===
+[797.4s] === Phase E START ===
+[809.9s] Phase E: audit=15, canary=PASS
+[809.9s] === Phase E END (12.5s) ===
+[811.5s] Report → /Users/sanchay/Documents/projects/personal/orbit/.claude/worktrees/autonomous-2026-04-19/outputs/stage-6-v4-2026-04-20/report.md
+
+=== STAGE6_V4_PASS ===
+

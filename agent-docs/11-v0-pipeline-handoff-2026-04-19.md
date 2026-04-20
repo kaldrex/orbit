@@ -1,8 +1,10 @@
 # 11 · V0 Pipeline Handoff — 2026-04-19
 
-> The session that proved the pipeline. Two cards produced end-to-end from real data. The next session scales to ~500 cards, wraps Orbit in an agent-facing CLI, and closes the continuous-update loop.
+> **STATUS: historical architecture narrative, superseded on counts + state by [14-cleanup-2026-04-20.md](./14-cleanup-2026-04-20.md) and [15-future-props.md](./15-future-props.md).**
 >
-> **Read this doc first.** Everything else (reports, verification artifacts, plans) is referenced from here.
+> Inline counts like "108 tests" and "8 commits" are snapshots from 2026-04-19 end-of-session and are left untouched as a record of what was true then. Current truth: **329 tests across 19 files, 1,602 persons, 5 live API routes, plus the `orbit-cli-plugin/` with 4 verbs.**
+>
+> This doc remains the best narrative source for: the V0 mental model, the observer → basket → resolver → card pipeline, the CLI-is-plumbing design invariant, gotchas learned the hard way (section 10). Read it for architecture, read 14/15 for current state.
 
 ---
 
@@ -37,6 +39,8 @@ The map isn't built once; it compounds. Every new WhatsApp message triggers a fr
 ### 1.5. The CLI wrapping (the thing we still need to build)
 
 Today the agent's interface to Orbit is raw HTTP curl in prompts. That's the same mistake as making Wazowski `POST web.whatsapp.com/send` instead of using `wacli send`. Orbit needs its own CLI (`orbit person get`, `orbit observation emit --batch`, etc.) so the agent thinks at the relationship level, not the transport level.
+
+**Design invariant — CLI is plumbing.** The `orbit` CLI owns arg parsing, HTTP transport, batching, auth, and output formatting — nothing else. All LLM judgment (category inference, `relationship_to_me` composition, per-thread topic/sentiment classification) stays inside the observer/resolver SKILLs and runs in Wazowski's prompt turn, funded by Wazowski's token budget. The CLI binary never holds an `ANTHROPIC_API_KEY`; it replaces curl, not the skill's brain. If a proposed verb seems to need judgment, push that work back into a SKILL.md instead of teaching the CLI to think.
 
 ### 1.6. Map-first, views-second
 
@@ -123,10 +127,11 @@ caed49a docs(openclaw-snapshot): autonomous reconnaissance of claw VM
 
 ### 3.3. In Supabase (project `xrfcmjllsotkwxxkfamb`)
 
-- `public.observations` table + BEFORE INSERT trigger + RLS + 4 indexes. 12 rows (4 interactions + 1 person for Umayr, 3 interactions + 1 person for Ramon, 1 merge each, 1 correction).
-- `public.persons` — 2 rows (Umayr = `67050b91-...`, Ramon = `9e7c0448-...`).
-- `public.person_observation_links` — 12 rows.
-- RPCs live: `upsert_observations` (with auto-merge), `select_observations`, `select_person_observations`, `compute_observation_dedup_key`.
+- `public.observations` — **3,218 rows** (as of 2026-04-20, post-cleanup). Pre-cleanup count was 12; scaled via Stage-5/5c bulk ingest.
+- `public.persons` — **1,602 rows**. Umayr = `67050b91-...`, Ramon = `9e7c0448-...` (both enriched from April 19); plus 1,600 skeleton cards awaiting Stage-6 LLM enrichment.
+- `public.person_observation_links` — scaled with persons; query for current count.
+- RPCs live: `upsert_observations` (with auto-merge), `select_observations`, `select_person_observations`, `compute_observation_dedup_key`, **`select_persons_page`** (new 2026-04-20, SECURITY DEFINER, paginated lookup for `/persons/enriched`).
+- **See [14-cleanup-2026-04-20.md](./14-cleanup-2026-04-20.md) for the narrative of how we got from 12 rows to 3,218.**
 
 ### 3.4. Old state preserved
 
@@ -248,6 +253,8 @@ Key capability — **bulk filter / upload / correct** explicitly. Sanchay called
 
 Install path on claw: `~/.openclaw/plugins/orbit-cli/`. Node CJS or ESM, `openclaw.extensions: ["./index.js"]` required (learned this the hard way — see §7).
 
+CLI owns HTTP + batching + ergonomics; observer/resolver skills own all interpretation.
+
 ### Phase B — Bulk scale pipeline (the 500-human map)
 
 Two-phase as per `project_scale_architecture_deterministic_first`:
@@ -337,7 +344,7 @@ ssh claw 'timeout 300 openclaw agent --agent main --thinking medium --timeout 24
   --message "Execute the orbit-observer skill for seed <JID-OR-PHONE>..."'
 
 # 6. Run tests
-npm test    # expect 108 green
+npm test    # expect 329 green (as of 2026-04-20 post-cleanup + Stage 6)
 ```
 
 Redeploy path if any of the claw-side artifacts drift:

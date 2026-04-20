@@ -1,0 +1,19 @@
+{
+  "name": "orbit-cli",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "index.js",
+  "description": "Plumbing-only OpenClaw plugin that wraps Orbit's HTTP API. Three verbs: orbit_observation_emit, orbit_observation_bulk, orbit_person_get. No LLM, no classification — transport only. Observer/resolver SKILLs own all interpretation.",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ]
+  }
+}

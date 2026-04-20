@@ -1,0 +1,81 @@
+{
+  "audit_date": "2026-04-20",
+  "scope": {
+    "branch": "worktree-autonomous-2026-04-19",
+    "head_commit": "a351f69",
+    "supabase_project": "xrfcmjllsotkwxxkfamb"
+  },
+  "overall_grade": "B-",
+  "summary": {
+    "plumbing": "solid — 12 error codes, 64 CLI tests, no LLM leakage",
+    "data": "poor — 99.97% placeholders, 74% non-human names, v2/v3 divergence, 4 duplicate persons",
+    "docs": "drifted — CLAUDE.md, 03-current-state, README index, handoff §3.3 all stale"
+  },
+  "findings_by_severity": {
+    "critical": 7,
+    "high": 11,
+    "medium": 9,
+    "low": 3,
+    "good": 8
+  },
+  "findings_by_dimension": {
+    "code_quality":      { "critical": 1, "high": 3, "medium": 3, "low": 1, "good": 3 },
+    "data_quality":      { "critical": 3, "high": 1, "medium": 3, "low": 1, "good": 1 },
+    "test_coverage":     { "critical": 1, "high": 3, "medium": 1, "low": 0, "good": 2 },
+    "architecture":      { "critical": 0, "high": 1, "medium": 0, "low": 1, "good": 2 },
+    "documentation":     { "critical": 2, "high": 2, "medium": 2, "low": 1, "good": 0 },
+    "hidden_debt":       { "critical": 0, "high": 1, "medium": 0, "low": 0, "good": 0 }
+  },
+  "db_snapshot": {
+    "persons": 6809,
+    "observations_total": 13626,
+    "observations_by_kind": {
+      "person": 6809,
+      "merge": 6809,
+      "interaction": 7,
+      "correction": 1
+    },
+    "person_observation_links": 13625,
+    "raw_events": 33105,
+    "placeholder_category_other_pct": 99.97,
+    "placeholder_relationship_to_me_count": 6807,
+    "phone_as_name_count": 5028,
+    "email_as_name_count": 62,
+    "unicode_masked_phone_as_name_count": 109,
+    "quoted_literal_name_count": 5,
+    "test_data_leak_count": 1,
+    "duplicate_phone_across_persons": 3,
+    "silently_skipped_lid_only_humans": 30
+  },
+  "manifest_state": {
+    "v2_rows": 6837,
+    "v2_group_jid_leaks": 408,
+    "v3_rows": 6837,
+    "v3_group_jid_leaks": 37,
+    "db_ingested_from": "v2",
+    "viz_reads": "v3",
+    "v2_v3_drift_critical": true
+  },
+  "test_state": {
+    "total": 196,
+    "files": 12,
+    "skipped": 0,
+    "todo": 0,
+    "duration_s": 22.0,
+    "untested_load_bearing_scripts": [
+      "scripts/manifest-to-observations.mjs",
+      "outputs/stage-5b-merges-2026-04-19/generate-merges.mjs",
+      "scripts/build-network-viz.mjs",
+      "outputs/manifest-hypothesis-2026-04-19/manifest-gen.mjs"
+    ]
+  },
+  "invisible_debt_count": 6,
+  "tracked_debt_count": 2,
+  "partial_debt_count": 3,
+  "top_3_critical_items": [
+    "re-ingest v3 manifest to fix DB/viz divergence",
+    "detect + merge pre-existing persons on bridge match (Umayr/Ramon duplicates)",
+    "apply observer safety rules in bulk transformer (cuts 5,199 junk names)"
+  ],
+  "biggest_invisible_risk": "v2/v3 manifest divergence compounded by placeholder relationship_to_me strings that render like real descriptions"
+}

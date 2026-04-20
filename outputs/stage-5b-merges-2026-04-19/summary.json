@@ -1,0 +1,57 @@
+{
+  "verdict": "STAGE_5B_PASS",
+  "date": "2026-04-19",
+  "user_id": "dbb398c2-1eff-4eee-ae10-bad13be5fda7",
+  "before": {
+    "persons": 2,
+    "obs_person": 6809,
+    "obs_merge": 2,
+    "obs_interaction": 7,
+    "obs_correction": 1,
+    "person_observation_links": 11
+  },
+  "after": {
+    "persons": 6809,
+    "obs_person": 6809,
+    "obs_merge": 6809,
+    "obs_interaction": 7,
+    "obs_correction": 1,
+    "person_observation_links": 13625
+  },
+  "delta": {
+    "persons": 6807,
+    "obs_merge": 6807,
+    "person_observation_links": 13614
+  },
+  "generation": {
+    "fetched": 6807,
+    "emitted": 6807,
+    "skipped": 0
+  },
+  "dry_run": {
+    "ok": true,
+    "dry_run": true,
+    "total_lines": 6807,
+    "would_insert_count": 6807,
+    "would_fail_count": 0
+  },
+  "bulk_run": {
+    "total_lines": 6807,
+    "batches_posted": 69,
+    "total_inserted": 6807,
+    "total_deduped": 0,
+    "failed_batches": []
+  },
+  "umayr_regression": {
+    "baseline_path": "outputs/verification/2026-04-19-umayr-v0/card.json",
+    "observed_path": "outputs/stage-5b-merges-2026-04-19/umayr-card.json",
+    "diff": "identical"
+  },
+  "spot_check": [
+    { "person_id": "b80441f1-41e1-41c3-b2ca-e1e73976fd7a", "name": "+916366405940", "phones": 1, "emails": 0, "ok": true },
+    { "person_id": "c386e964-16f2-44a4-a2f7-8ccce468fc70", "name": "+918002283084", "phones": 1, "emails": 0, "ok": true },
+    { "person_id": "efe882ef-7d41-4f88-8d69-a41d73c0793a", "name": "Shubham Junnarkar", "phones": 1, "emails": 0, "ok": true },
+    { "person_id": "2dbe60b1-7abc-42b0-9fe5-543710b15c38", "name": "+918889588222", "phones": 1, "emails": 0, "ok": true },
+    { "person_id": "5fd553f6-a302-440c-864b-34b3e9533201", "name": "+917506062763", "phones": 1, "emails": 0, "ok": true }
+  ]
+}

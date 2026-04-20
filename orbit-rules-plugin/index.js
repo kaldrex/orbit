@@ -5,8 +5,10 @@ import { createRequire } from "node:module";
 import { normalizePhone } from "./lib/phone.mjs";
 import { canonicalizeEmail } from "./lib/email.mjs";
 import { domainClass } from "./lib/domain.mjs";
-import { lidToPhone } from "./lib/lid.mjs";
+import { lidToPhone, phoneForContact, isResolvableLidContact } from "./lib/lid.mjs";
 import { fuzzyMatch } from "./lib/fuzzy.mjs";
+import { stripForwardedChainName } from "./lib/forwarded.mjs";
+import { decideCrossChannelMerge } from "./lib/bridge.mjs";
 
 // The openclaw runtime bundles plugin-entry under dist/plugin-entry-<hash>.js
 // and exports it aliased as `t` (not `definePluginEntry`). We glob for the
@@ -132,6 +134,82 @@ export default definePluginEntry({
         required: ["name_a", "name_b"],
       },
       execute: async (_id, params) => envelope(fuzzyMatch(params ?? {})),
+    });
+
+    api.registerTool({
+      name: "orbit_rules_strip_forwarded_chain_name",
+      description:
+        "Detect Gmail forwarded-chain display-name pollution (e.g. 'DigitalOcean' on a shamlata@cyphersol.co.in email). Returns the cleaned name, or null if the name should be dropped so caller falls back to email localpart.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          from_name: { type: "string" },
+          from_email: { type: "string" },
+          subject: { type: "string" },
+        },
+        required: ["from_name"],
+      },
+      execute: async (_id, params) =>
+        envelope({ cleaned: stripForwardedChainName(params ?? {}) }),
+    });
+
+    api.registerTool({
+      name: "orbit_rules_cross_channel_bridge",
+      description:
+        "Decide whether two buckets (one WA-only, one Gmail-only) should merge on fuzzy name. Guards against generic short names and single-token ambiguity. Returns {merge, score, reason}.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          bucket_a: { type: "object" },
+          bucket_b: { type: "object" },
+          threshold: { type: "number" },
+          single_token_threshold: { type: "number" },
+        },
+        required: ["bucket_a", "bucket_b"],
+      },
+      execute: async (_id, params) =>
+        envelope(decideCrossChannelMerge(params ?? {})),
+    });
+
+    api.registerTool({
+      name: "orbit_rules_phone_for_contact",
+      description:
+        "Positive-source LID rule. For @lid jids, the only valid phone source is whatsmeow_lid_map (via lidMap or session.db). contacts.phone is ignored for @lid because it frequently re-echoes LID digits. Returns the E.164 phone string or null.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          row: { type: "object" },
+          lid_map_source: { type: "string" },
+        },
+        required: ["row"],
+      },
+      execute: async (_id, params) =>
+        envelope({ phone: phoneForContact(params ?? {}) }),
+    });
+
+    api.registerTool({
+      name: "orbit_rules_is_resolvable_lid_contact",
+      description:
+        "Seed filter: returns false for @lid contacts with no name AND no lidMap bridge (unresolvable 'ghost' rows). Non-@lid rows always return true.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          row: { type: "object" },
+        },
+        required: ["row"],
+      },
+      execute: async (_id, params) => {
+        // Note: plugin runtime can't pass a live Map. Tool callers who need
+        // the filter at ingress should use the inline lib function directly.
+        const row = (params ?? {}).row;
+        return envelope({
+          resolvable: isResolvableLidContact(row, null),
+        });
+      },
     });
   },
 });
