@@ -59,7 +59,7 @@ export function OnboardingClient({ userEmail }: { userEmail: string }) {
   async function generateKey() {
     setKeyLoading(true);
     try {
-      const res = await fetch("/api/keys", {
+      const res = await fetch("/api/v1/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: "Orbit onboarding" }),

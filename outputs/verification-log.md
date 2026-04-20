@@ -467,3 +467,78 @@ Artifacts:
 **Evidence:** `outputs/docs-refresh-2026-04-20/{report.md, summary.json}`.
 
 **Rollback:** `git checkout -- agent-docs/ CLAUDE.md outputs/verification-log.md docs/handoff/README.md` restores pre-refresh state. Archived files: `mv agent-docs/archive/04-roadmap.md agent-docs/04-roadmap.md && mv agent-docs/archive/05-golden-packets.md agent-docs/05-golden-packets.md`.
+
+---
+
+## 2026-04-20 — /persons/enriched N+1 fix (server-side card fold)
+
+**Claim:** "The per-person loop on `/api/v1/persons/enriched` is replaced by a single `select_enriched_persons` RPC that folds latest-wins scalars + phone/email union + correction overrides in Postgres. limit=500 drops from ~5 min extrapolated (was 5.3 s at limit=5) to 1.75 s; full 1,600-enriched page drops from ~9 min to 1.9 s. Fold semantics are byte-identical to `assembleCard` for the 7 list fields. No enrichment columns were added to `persons` and no trigger mutates `persons` on observation insert — the RPC reads observations live every request, preserving the "observations are source of truth" contract."
+
+**Investigation:** Added [`supabase/migrations/20260420_select_enriched_persons_rpc.sql`](../supabase/migrations/20260420_select_enriched_persons_rpc.sql) — `SECURITY DEFINER` plpgsql with explicit `p_user_id` guard, cursor pagination on `persons.id` ASC, `page_last_id` returned on every row (plus a sentinel `id=NULL` row when the page was full but every person was filtered out, so cursors advance past filtered-out regions). Rewrote [`src/app/api/v1/persons/enriched/route.ts`](../src/app/api/v1/persons/enriched/route.ts) to call the new RPC directly — removed the `select_persons_page` + `select_person_observations` + `assembleCard` loop; kept the response shape `{ persons, next_cursor }`. Migration applied via `psql $SUPABASE_DB_URL` (Supabase is a test env per `memory/project_supabase_is_test_env.md`).
+
+**Result:** PASS — all 5 verification checks green.
+
+- **(a) Speed:** `curl -w '%{time_total}' http://localhost:3047/api/v1/persons/enriched?limit=500` → HTTP 200, **1.754 s elapsed** (499 persons returned + next_cursor set). Full `limit=2000` round-trip: 1.893 s, 1,600 persons, 350 KB payload. Threshold ≤ 3 s — met.
+- **(b) Aditya parity** (id `000be6de-949e-46ee-be5f-01df7eead288`): the 7 list fields (name, category, company, title, relationship_to_me, phones[0], emails) match `/api/v1/person/:id/card` exactly. `diff: {}`.
+- **(c) 10-sample parity:** 10 randomly-sampled enriched persons diffed list-vs-card — 0/10 mismatches across all 7 fields. Sample: Ramya, Jubin, Shobhan, Pradeep Ambhore, Anushka Patil, Sudheer, Nilakshii, rezzzoo, Dhathri Meda, Aiyaz. Script: `/tmp/parity-check.mjs`.
+- **(d) Umayr canary** (id `67050b91-5011-4ba6-b230-9a387879717a`): name=`Umayr Sheik`, category=`team`, company=`SinX Solutions`, title=`Founder`, relationship_to_me prefix=`"Close friend and tech peer based in Dubai..."` — byte-identical to [`outputs/verification/2026-04-19-umayr-v0/card.json`](./verification/2026-04-19-umayr-v0/card.json). `diff: {}`. Verdict: **UNCHANGED**.
+- **(e) Regression test:** `npm test` → **21 test files, 354 passed, 1 skipped (the `TEST_LIVE=1`-gated live latency test), 0 failures**. Prior baseline was 329 tests; delta is two added tests in this file (sentinel-row handling + short-page next_cursor=null) plus the live-gated test and test splits elsewhere. Live test passes at `TEST_LIVE=1`: 499 persons in 2500 ms (under the 3 s assertion).
+
+**Evidence:**
+- New migration: `supabase/migrations/20260420_select_enriched_persons_rpc.sql` (261 lines, untracked).
+- Route rewrite + test rewrite: `git diff --stat HEAD` → `src/app/api/v1/persons/enriched/route.ts  108 ++++-----` and `tests/integration/persons-enriched-endpoint.test.ts  246 +++++++++++----------` (169 insertions, 185 deletions).
+- Parity scripts (ephemeral): `/tmp/parity-check.mjs`, `/tmp/umayr-canary.mjs`.
+- Sampled outputs: `/tmp/enriched-500.json`, `/tmp/enriched-full.json`, `/tmp/aditya-card.json`.
+- Parent sha at time of change: `6c9b7531` (`HEAD` on worktree-autonomous-2026-04-19). The diff itself is uncommitted per instruction — awaiting Sanchay's review.
+
+**Semantics replicated in SQL faithfully:**
+1. Fold order: observed_at ASC, tiebreak ingested_at ASC (JS only used observed_at; ingested_at is a safe extra tiebreak that matches ingestion causality).
+2. Latest-non-null wins for name, category, relationship_to_me (truthy-string gate — matches `if (p.name)`).
+3. Set-assign for company/title (presence check + string|null — matches `!== undefined && !== null`).
+4. Union with insertion-order dedup for phones/emails (mirrors `Set.add` walk).
+5. Correction kind overrides scalar; for phones/emails arrays the correction CLEAR+REPLACES (matches `phones.clear(); new.forEach(add)`).
+6. Enriched filter: `category <> 'other' OR (relationship_to_me <> '' AND NOT LIKE 'Appears in%')` — exact mirror of the JS predicate.
+
+**Not replicated in SQL (by design, out of contract):**
+- `one_paragraph_summary` and the `isSimilar` Jaccard dedupe — list endpoint never returned these.
+- `observations.interactions` / `observations.recent_corrections` / `observations.total` — list endpoint never returned these.
+- `last_touch` as last-interaction timestamp — list endpoint used `updated_at = max observed_at across ALL kinds`, which I preserved. `last_touch` on the card is `max observed_at where kind='interaction'`; these can differ when a person has a newer correction/person obs than any interaction obs. That's existing behavior, not a drift from the list's contract.
+
+**Rollback:** `DROP FUNCTION public.select_enriched_persons(uuid, uuid, integer);` and `git checkout src/app/api/v1/persons/enriched/route.ts tests/integration/persons-enriched-endpoint.test.ts`. The old route calling `select_persons_page` + `select_person_observations` both still exist in the DB and codebase, so rollback is one-shot.
+
+---
+
+## 2026-04-21 — Phase 0 foundation (api_keys RPC + neo4j client + capabilities + keys routes)
+
+**Claim:** "The silent `validate_api_key` RPC gap is closed. Bearer-token auth end-to-end works (mint via session → validate via Bearer → RPC updates `last_used_at`). New `/api/v1/capabilities` route reads via SECURITY DEFINER `select_capability_reports` RPC (bypasses ANON-key RLS trap, same pattern as `select_enriched_persons`). New `/api/v1/keys` route mints through `mint_api_key` RPC and returns the raw key exactly once. Neo4j driver singleton + withSession helpers in place; Aura (`3397eac8.databases.neo4j.io`) reachable. Umayr canary byte-identical."
+
+**Investigation.** Three parallel subagents (P0-A migrations, P0-B neo4j client, P0-C routes) landed the scaffolding. Post-landing discovered two contract mismatches: (1) GET `/capabilities` was calling `.from("capability_reports").select()` under ANON — silently empty under RLS (auth.uid() is null in anon context); fix was `select_capability_reports(p_user_id)` RPC SECURITY DEFINER. (2) `upsert_capability_report` returned `integer` (row-count) but the POST route expected `reported_at`; fix was DROP+recreate returning `timestamptz` directly. Both fixes captured in `supabase/migrations/20260421_capability_reports_fixes.sql`, applied via `psql $SUPABASE_DB_URL`.
+
+**Result:** PASS — all 8 live checks green.
+
+| # | Check | Result |
+|---|---|---|
+| a | `npm test` | 24 files, 386 passed + 1 skipped, 0 failures |
+| b | `GET /api/v1/capabilities` empty | `{"agents":[]}` HTTP 200 |
+| c | `POST /api/v1/capabilities` Wazowski heartbeat | `{"ok":true,"reported_at":"2026-04-20T21:34:47.064898+00:00"}` |
+| d | `GET /api/v1/capabilities` after write | 1 agent, wazowski@openclaw-sanchay, 2 channels ready |
+| e | `POST /api/v1/keys` no auth | HTTP 401, code `unauthorized` |
+| f | `POST /api/v1/keys` Bearer + mint | returned new `orb_live_4jSC…`, key works on subsequent Bearer call (round-trip: 1 person returned from `/persons/enriched`) |
+| g | Neo4j driver `verifyConnectivity` | OK, db `3397eac8` |
+| h | Umayr canary (`67050b91-5011-4ba6-b230-9a387879717a`) | `name + category + company + title + relationship_to_me` all SAME vs `outputs/verification/2026-04-19-umayr-v0/card.json` |
+
+**Evidence:**
+- Migrations: `supabase/migrations/20260421_api_keys_table_and_rpc.sql` (170 lines), `20260421_capability_reports.sql` (88 lines), `20260421_capability_reports_fixes.sql` (new, 87 lines).
+- Neo4j client: `src/lib/neo4j.ts` + `tests/unit/neo4j-client.test.ts` (16 tests).
+- Routes: `src/app/api/v1/keys/route.ts` (106 lines), `src/app/api/v1/capabilities/route.ts` (173 lines after fix).
+- Tests: `tests/integration/v1-keys.test.ts` (7 tests), `tests/integration/v1-capabilities.test.ts` (9 tests, rewritten for RPC-based mocks).
+- Client update: `src/app/onboarding/OnboardingClient.tsx` line 62 now calls `/api/v1/keys`.
+- Parent sha at time of change: `6e9b2fc` on `worktree-autonomous-2026-04-19`, diff sitting on new branch `v1-dashboard-and-vision-features`.
+
+**RPC signatures that landed:**
+- `validate_api_key(key_hash_input text) RETURNS uuid` (scalar — matches existing `src/lib/api-auth.ts` call site; updates `last_used_at` on match; returns NULL for revoked).
+- `mint_api_key(p_user_id uuid, p_key_hash text, p_prefix text, p_name text) RETURNS TABLE (id uuid, prefix text, created_at timestamptz)`.
+- `select_capability_reports(p_user_id uuid) RETURNS TABLE (agent_id, hostname, channels jsonb, data_sources jsonb, tools jsonb, reported_at)`.
+- `upsert_capability_report(p_user_id uuid, p_agent_id text, p_hostname text, p_channels jsonb, p_data_sources jsonb, p_tools jsonb) RETURNS timestamptz`.
+
+**Rollback:** `DROP FUNCTION mint_api_key, validate_api_key, select_capability_reports, upsert_capability_report; DROP TABLE capability_reports; ALTER TABLE api_keys DROP COLUMN revoked_at, last_used_at; rename prefix back to key_prefix;` plus `git checkout src/app/api/v1/keys src/app/api/v1/capabilities src/lib/neo4j.ts src/app/onboarding/OnboardingClient.tsx`. The two pre-existing rows in `api_keys` (`Wazowski Test`, `Wazowski Connector`) would persist under the legacy schema.
