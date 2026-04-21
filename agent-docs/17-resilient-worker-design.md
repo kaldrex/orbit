@@ -1,6 +1,6 @@
 # 17 · Resilient Worker — design for a shared batch-job library
 
-> **STATUS: design-only, not yet built.** Proposed as the prerequisite for Stage 7 (continuous loop) because a cron that silently fails or stalls kills the "living map" promise. Captures the lessons from Stage 6-v1 stall + Stage 6-v3 JSON-parse-loss in one reusable module.
+> **STATUS: SHIPPED 2026-04-20 in commit `36dd6df`.** Library lives at `scripts/lib/resilient-worker.mjs` with unit tests at `tests/unit/resilient-worker.test.mjs`. Used by the interaction-pipeline backfill + enricher path. This doc is retained as the design reference that drives the library's behavior (resume semantics, retry schedule, circuit-breaker thresholds, budget accounting).
 
 ## The pitch in one paragraph
 

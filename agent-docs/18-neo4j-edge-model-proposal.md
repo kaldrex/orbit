@@ -1,5 +1,7 @@
 # 18 · Neo4j Edge Model Proposal
 
+> **STATUS: SHIPPED 2026-04-21 in commits `5a27faf` (Phase 2) and `75ed8f4` (Phase 5.1 — LID bridge extension).** Implemented at `src/app/api/v1/graph/populate/route.ts` + `src/lib/neo4j-writes.ts` + `supabase/migrations/20260421_graph_populate_rpcs.sql` (and the LID bridge migration). Live counts: 1,602 `:Person` nodes, 1,232 edges (DM 135 · SHARED_GROUP 1,095 · EMAILED 2). This doc is retained as the design reference — weight formula, prune semantics, and the 8 open product questions (edge worth, directedness, decay) all live here.
+>
 > Design for the graph projection that re-enables Neo4j as a first-class citizen alongside Postgres. Scoped to V0 data sources (WhatsApp + Gmail + Google Contacts). Postgres is the source of truth; Neo4j is a rebuildable projection. See [15-future-props.md](./15-future-props.md) "Why Neo4j is load-bearing" for the product case.
 
 ## Invariants
