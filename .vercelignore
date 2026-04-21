@@ -1,0 +1,5 @@
+# keep Vercel uploads aligned with what git tracks
+references/
+outputs/provisioning/
+openclaw-snapshot/
+.claude/
