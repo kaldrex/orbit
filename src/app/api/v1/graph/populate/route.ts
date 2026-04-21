@@ -74,6 +74,18 @@ interface GroupThreadPhoneRow {
   msg_count: number;
 }
 
+interface GroupThreadLidRow {
+  thread_id: string;
+  lid: string;
+  last_at: string;
+  msg_count: number;
+}
+
+interface LidPhoneRow {
+  lid: string;
+  phone: string;
+}
+
 interface EmailInteractionRow {
   person_id: string;
   msg_count: number;
@@ -158,10 +170,12 @@ export async function POST(request: Request) {
     cursor = rows[rows.length - 1].id;
   }
 
-  const [phoneMapRes, dmRes, groupRes, emailRes] = await Promise.all([
+  const [phoneMapRes, dmRes, groupRes, groupLidRes, lidMapRes, emailRes] = await Promise.all([
     supabase.rpc("select_phone_person_map", { p_user_id: userId }),
     supabase.rpc("select_dm_thread_stats", { p_user_id: userId }),
     supabase.rpc("select_group_thread_phones", { p_user_id: userId }),
+    supabase.rpc("select_group_thread_lids", { p_user_id: userId }),
+    supabase.rpc("select_lid_phone_map", { p_user_id: userId }),
     supabase.rpc("select_email_interactions", { p_user_id: userId }),
   ]);
 
@@ -169,6 +183,8 @@ export async function POST(request: Request) {
     ["select_phone_person_map", phoneMapRes],
     ["select_dm_thread_stats", dmRes],
     ["select_group_thread_phones", groupRes],
+    ["select_group_thread_lids", groupLidRes],
+    ["select_lid_phone_map", lidMapRes],
     ["select_email_interactions", emailRes],
   ] as const) {
     if (res.error) {
@@ -188,6 +204,16 @@ export async function POST(request: Request) {
     : []) as PhonePersonRow[];
   const dmRows = (dmRes.data ?? []) as DmThreadRow[];
   const groupRows = (groupRes.data ?? []) as GroupThreadPhoneRow[];
+  // select_group_thread_lids returns jsonb (array) rather than SETOF so we
+  // can exceed the 1000-row PostgREST cap (same trick as phone + lid maps).
+  const groupLidRows = (Array.isArray(groupLidRes.data)
+    ? (groupLidRes.data as GroupThreadLidRow[])
+    : []) as GroupThreadLidRow[];
+  // select_lid_phone_map mirrors select_phone_person_map (returns a single
+  // jsonb array rather than SETOF, to bypass the 1000-row cap).
+  const lidRows = (Array.isArray(lidMapRes.data)
+    ? (lidMapRes.data as LidPhoneRow[])
+    : []) as LidPhoneRow[];
   const emailRows = (emailRes.data ?? []) as EmailInteractionRow[];
 
   const runAt = new Date().toISOString();
@@ -207,6 +233,44 @@ export async function POST(request: Request) {
     if (!phoneMap.has(row.phone)) phoneMap.set(row.phone, row.person_id);
   }
 
+  // LID → phone map from lid_phone_bridge. Bridge stores phones as raw
+  // digits (no '+'); phoneMap keys are +E164. We canonicalize by prefixing
+  // '+' on lookup. Entries in participants_raw carry `<digits>@lid` — we
+  // pre-split in select_group_thread_lids so lid rows are bare digits.
+  const lidToPhone = new Map<string, string>();
+  for (const row of lidRows) {
+    if (!row.lid || !row.phone) continue;
+    const digits = String(row.phone).replace(/\D+/g, "");
+    if (!digits) continue;
+    lidToPhone.set(row.lid, `+${digits}`);
+  }
+
+  // Fold LID-sender group rows into the same shape as phone-sender rows
+  // by resolving lid→phone via the bridge. Rows whose LID has no bridge
+  // entry (unseen phone) are dropped — they'll resolve once the bridge
+  // catches up. Rows whose resolved phone has no person are kept (they
+  // still contribute nothing to edges, by design — same as phone rows).
+  const groupRowsMerged: GroupThreadPhoneRow[] = [...groupRows];
+  let lidResolved = 0;
+  let lidUnresolved = 0;
+  for (const g of groupLidRows) {
+    const phone = lidToPhone.get(g.lid);
+    if (!phone) {
+      lidUnresolved += 1;
+      continue;
+    }
+    lidResolved += 1;
+    groupRowsMerged.push({
+      thread_id: g.thread_id,
+      phone,
+      last_at: g.last_at,
+      msg_count: Number(g.msg_count),
+    });
+  }
+  console.log(
+    `[graph/populate] LID bridge: rows_in=${groupLidRows.length} resolved=${lidResolved} unresolved=${lidUnresolved}`,
+  );
+
   const personLastInteractionMap = new Map<string, string>();
   const bumpLast = (personId: string, at: string | null) => {
     if (!personId || !at) return;
@@ -217,7 +281,7 @@ export async function POST(request: Request) {
     const personId = phoneMap.get(d.thread_phone);
     if (personId) bumpLast(personId, d.last_at);
   }
-  for (const g of groupRows) {
+  for (const g of groupRowsMerged) {
     const personId = phoneMap.get(g.phone);
     if (personId) bumpLast(personId, g.last_at);
   }
@@ -277,7 +341,7 @@ export async function POST(request: Request) {
     string,
     Map<string, { last_at: string; msg_count: number }>
   >();
-  for (const g of groupRows) {
+  for (const g of groupRowsMerged) {
     const personId = phoneMap.get(g.phone);
     if (!personId) continue;
     let perThread = groupByThread.get(g.thread_id);
@@ -435,6 +499,12 @@ export async function POST(request: Request) {
       nodes_scored: scoreSummary.nodes,
       max_score: scoreSummary.max_score,
       top5: scoreSummary.top5,
+    },
+    lid_bridge: {
+      lid_rows: lidRows.length,
+      group_lid_rows: groupLidRows.length,
+      resolved: lidResolved,
+      unresolved: lidUnresolved,
     },
     self_person_id: selfPersonId,
     elapsed_ms: Date.now() - t0,

@@ -149,12 +149,27 @@ describe("observationSchema", () => {
     expect(() => observationSchema.parse(bad)).toThrow();
   });
 
-  it("rejects merge with fewer than 2 merged_observation_ids", () => {
-    const bad = {
+  it("accepts single-source merge (1 merged_observation_id)", () => {
+    // Single-source merges are the manual-entry / single-channel path —
+    // see memory/project_single_source_valid.md and the
+    // 20260421_single_source_merge migration. A person materialized from
+    // one source obs is a valid terminal state.
+    const singleSource = {
       ...validMerge,
       payload: {
         ...validMerge.payload,
         merged_observation_ids: ["11111111-1111-4111-8111-111111111111"],
+      },
+    };
+    expect(() => observationSchema.parse(singleSource)).not.toThrow();
+  });
+
+  it("rejects merge with zero merged_observation_ids", () => {
+    const bad = {
+      ...validMerge,
+      payload: {
+        ...validMerge.payload,
+        merged_observation_ids: [] as string[],
       },
     };
     expect(() => observationSchema.parse(bad)).toThrow();

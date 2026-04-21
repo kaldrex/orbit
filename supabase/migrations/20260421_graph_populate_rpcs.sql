@@ -323,6 +323,58 @@ revoke all on function public.select_group_thread_phones(uuid) from public;
 grant execute on function public.select_group_thread_phones(uuid) to anon, authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
+-- Per group-thread: LID senders appearing in participants_raw[0].jid.
+-- This is the bulk of group messages in the WhatsApp LID-rollout era —
+-- ~95% of group rows have `@lid`-format senders rather than phones. The
+-- populate route joins these rows against lid_phone_bridge (populated
+-- from claw's whatsmeow_lid_map) to resolve each LID to a phone, then
+-- into a person via select_phone_person_map.
+--
+-- We deliberately emit LIDs as raw digits (strip '@lid') to match the
+-- format stored in lid_phone_bridge.lid.
+-- ---------------------------------------------------------------------------
+
+-- Returns a single jsonb array (one element per (thread_id, lid)) to bypass
+-- PostgREST's 1000-row SETOF cap. Group LID senders can easily exceed 1k
+-- distinct pairs once the full history is loaded.
+create or replace function public.select_group_thread_lids(
+  p_user_id uuid
+)
+returns jsonb
+language sql
+security definer
+set search_path = public, extensions
+as $$
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'thread_id', thread_id,
+        'lid', lid,
+        'last_at', last_at,
+        'msg_count', msg_count
+      )
+    ),
+    '[]'::jsonb
+  )
+  from (
+    select
+      re.thread_id,
+      split_part(re.participants_raw->0->>'jid', '@', 1) as lid,
+      max(re.occurred_at) as last_at,
+      count(*) as msg_count
+    from public.raw_events re
+    where re.user_id = p_user_id
+      and re.source = 'whatsapp'
+      and re.thread_id like '%@g.us'
+      and re.participants_raw->0->>'jid' like '%@lid'
+    group by re.thread_id, split_part(re.participants_raw->0->>'jid', '@', 1)
+  ) s
+$$;
+
+revoke all on function public.select_group_thread_lids(uuid) from public;
+grant execute on function public.select_group_thread_lids(uuid) to anon, authenticated, service_role;
+
+-- ---------------------------------------------------------------------------
 -- Email interaction counts per (other-)person.
 -- Each interaction observation links to exactly one non-self person; the
 -- edge is self<->person. We aggregate message_count / first_at / last_at

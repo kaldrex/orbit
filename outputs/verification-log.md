@@ -723,3 +723,82 @@ P3-B built the frontend: `IntroPathSearch` (type-ahead against `/persons/enriche
 4. **Script carries its own `package.json` on claw** (`~/orbit-pipeline-tmp/package.json` pinning `@anthropic-ai/sdk@^0.90.0` + `better-sqlite3@^11.5.0`). When claw gets a proper orbit checkout, swap rsync for a real `npm install` against that checkout.
 
 **Rollback:** `git checkout src/components/PersonPanel.tsx` + `rm -rf src/app/api/v1/person/[id]/topics src/lib/topic-chip.ts tests/integration/v1-person-topics.test.ts tests/unit/topic-chip.test.ts scripts/topic-resonance.mjs orbit-claw-skills/orbit-topic-resonance supabase/migrations/20260421_person_topics.sql` + `DROP TABLE public.person_topics CASCADE; DROP FUNCTION public.upsert_person_topics(uuid,uuid,jsonb); DROP FUNCTION public.select_person_topics(uuid,uuid,integer);` on live Supabase. Neo4j + observations ledger untouched.
+
+---
+
+## 2026-04-21 — WhatsApp LID↔phone bridge (group-message resolution)
+
+**Claim:** "Group-message `@lid`-only senders now resolve to persons via a Postgres projection of claw's `whatsmeow_lid_map`; SHARED_GROUP edges jumped from 23 → 1,095, total edges 160 → 1,232."
+
+**Investigation:** 17,890 group raw_events on disk; only 123 carried resolvable phones in `participant_phones`; 16,948 carried `@lid`-format senders in `participants_raw[0].jid` that the graph populate could not resolve. Sanity-checked `~/.wacli/session.db` via `ssh claw`: 14,995 rows in `whatsmeow_lid_map(lid TEXT PRIMARY KEY, pn TEXT UNIQUE)` covering the LIDs we see in group threads.
+
+**Change:**
+- New projection table `public.lid_phone_bridge(user_id, lid, phone, last_seen)` + RLS + two SECURITY DEFINER RPCs (`upsert_lid_bridge`, `select_lid_phone_map`). `observations` untouched — the bridge is a lookup cache, not an identity claim.
+- New populate RPC `select_group_thread_lids(p_user_id)` returning `jsonb` (bypasses PostgREST's 1000-row SETOF cap — 1,622 distinct pairs on disk).
+- New route `POST /api/v1/lid_bridge/upsert` (Bearer-auth, zod-validated, max 1,000 entries per call).
+- New CLI verb `orbit_lid_bridge_upsert` (plus index.js + openclaw.plugin.json registration + 3 unit tests).
+- `scripts/populate-lid-bridge.mjs` — SSH → `sqlite3 .schema + SELECT` → chunk 500 → POST.
+- Graph populate route extended: fetches `select_group_thread_lids` + `select_lid_phone_map`, resolves LID→phone (prefixing `+` to match `+E164` phoneMap keys), folds resolved rows into the existing group-thread pipeline, and surfaces `lid_bridge: {lid_rows, group_lid_rows, resolved, unresolved}` in the response.
+
+**Evidence:**
+- `supabase/migrations/20260421_lid_phone_bridge.sql` — applied via `psql` (live Supabase).
+- `supabase/migrations/20260421_graph_populate_rpcs.sql` — `select_group_thread_lids` added + swapped to `jsonb` return type (applied separately to live DB).
+- `src/app/api/v1/lid_bridge/upsert/route.ts` — new route.
+- `src/app/api/v1/graph/populate/route.ts` — populate extended.
+- `orbit-cli-plugin/{lib/client.mjs, index.js, openclaw.plugin.json}` — verb, descriptor (v0.3.0), registration.
+- `tests/unit/orbit-cli-new-verbs.test.mjs` — 3 new tests (happy / empty-batch / > 1000 entries). **`npm test`: 529 passed / 2 skipped (was 526 before this work) — +3 LID tests.**
+- `scripts/populate-lid-bridge.mjs` — ran end-to-end against local dev server: 14,995 rows dumped, 30 batches of 500, 30.4s total, all `HTTP 200 {upserted: 500}`.
+- `POST /api/v1/graph/populate`: edges_written `160 → 1,232`. Breakdown: DM 135 (unchanged), **SHARED_GROUP 23 → 1,095**, EMAILED 2 (unchanged). `lid_bridge: {lid_rows: 14995, group_lid_rows: 1622, resolved: 1593, unresolved: 29}` (98.2% LID-resolution rate). Populate elapsed: 5.7s steady.
+- `GET /api/v1/graph` — links `160 → 1,232` (dashboard reads will show the denser map immediately).
+- **Umayr canary: SAME.** id, name="Umayr Sheik", category="team", company="SinX Solutions", title="Founder", relationship_to_me, phone_count=1, email_count=3 all identical across the before/after Cypher snapshot. Derived metrics updated as expected: `score` 2.77 → 3.22 (more incident edges → higher degree), `last_interaction_at` 2026-04-12T15:05:11 → 15:25:20 (a group message from Umayr newly resolved via bridge).
+- First 5 newly-resolved `@lid` senders by person-name (alpha, names that weren't reachable via phone-only pre-bridge): Alok Dada, Alok Pande, Amaan, Amir D, Amol.
+
+**Rollback:** `DROP TABLE public.lid_phone_bridge CASCADE; DROP FUNCTION public.upsert_lid_bridge(uuid,jsonb); DROP FUNCTION public.select_lid_phone_map(uuid); DROP FUNCTION public.select_group_thread_lids(uuid);` + revert the three code files. Observations ledger untouched; re-running populate without the bridge restores the 160-edge graph.
+
+**Commit:** working-tree only (no commit yet per instructions). Base commit: `71b79e5`.
+
+---
+
+## 2026-04-21 — Phase 5: Living Orbit (jobs queue + pg_cron + Haiku enricher + claw runner)
+
+**Claim:** "Orbit self-updates on a schedule. pg_cron enqueues observer/enricher/meeting_sync jobs; a claw-side systemd timer polls `/api/v1/jobs/claim` every 15 min, dispatches to SKILL wrappers, and reports via `/api/v1/jobs/report`. No SSH required. Umayr canary SAME."
+
+**Change:**
+- `supabase/migrations/20260421_jobs.sql` — `jobs` table + RLS + three RPCs (`enqueue_job`, `claim_next_job` using `FOR UPDATE SKIP LOCKED`, `report_job_result` supporting succeeded/failed/retry).
+- `supabase/migrations/20260421_jobs_pg_cron.sql` — `CREATE EXTENSION pg_cron`, `observer_watermarks` side-table, three schedulers (`*/15 * * * *` observer, `0 * * * *` meeting_sync, `0 3 1,15 * *` enricher ~14d), three enqueue-fn wrappers.
+- `src/app/api/v1/jobs/claim/route.ts` + `src/app/api/v1/jobs/report/route.ts` — POST, Bearer-auth, zod-validated, 502/404/401 surfaces mapped cleanly.
+- `tests/integration/v1-jobs.test.ts` — **15 new tests** covering auth, empty queue, UUID validation, malformed JSON, retry status, RPC errors, 404 on orphan job.
+- `tests/unit/orbit-cli-new-verbs.test.mjs` — 3 existing tests adjusted (CLI now sends `{agent, kinds[]}` to match Phase 5 contract; 1 new empty-queue test, 1 new missing-kinds test — net +1).
+- `orbit-cli-plugin/lib/client.mjs` + `index.js` — `orbit_jobs_claim` surface changed from `{agent, capability}` to `{agent, kinds[]}` (hard cutover).
+- `scripts/enricher-v5-haiku.mjs` — Haiku port of enricher-v4 wrapped in `ResilientWorker`. Model `claude-haiku-4-5-20251001` + fallback `claude-haiku-4-5`. Budget $8 ceiling (expected spend < $2). Progress file `outputs/enricher-v5-<date>/progress.json`, quarantine, circuit breaker, atomic emit → `/observations`. Idempotent via `evidence_pointer: enrichment://enricher-v5/person-<id>`.
+- `orbit-claw-skills/orbit-job-runner/` — new skill:
+  - `run-once.sh` — POST claim → dispatch → POST report.
+  - `dispatchers/{observer,enricher,meeting_sync,topic_resonance}.sh` — thin shell wrappers that shell out to `openclaw run --skill ...` or `node enricher-v5-haiku.mjs`; all LLM calls stay on claw.
+  - `orbit-job-runner.{service,timer}` — systemd units: oneshot service + 15-min timer, `Persistent=true` so missed ticks catch up.
+  - `README.md` — install instructions + env contract.
+
+**Evidence (live end-to-end):**
+1. Migrations applied live to Supabase (`xrfcmjllsotkwxxkfamb`) via MCP. `pg_cron` extension installed from the extension catalog.
+2. `cron.job` table now has three orbit schedules (verified via `SELECT jobname, schedule FROM cron.job WHERE jobname LIKE 'orbit-%'`):
+   - `orbit-observer-tick` — `*/15 * * * *`
+   - `orbit-meeting-sync-tick` — `0 * * * *`
+   - `orbit-enricher-tick` — `0 3 1,15 * *`
+3. **SQL-only path:** `enqueue_job(sanchay_user_id, 'observer', {"test":true})` → `claim_next_job(user, 'wazowski', ['observer','enricher'])` returned the row, set `claimed_at`, `claimed_by='wazowski'`, `attempts=1` → `report_job_result(job_id, user, 'succeeded', {...})` → row has `completed_at` set and `result = {"status":"succeeded", "data":{"note":"sql test"}}`. Verified in-DB.
+4. **HTTP path via live dev server at `localhost:3047`:**
+   ```
+   POST /api/v1/jobs/claim   → 200 {"job":null}                                                              (empty queue)
+   [enqueue_job(...) via SQL → job e5ea6317-...]
+   POST /api/v1/jobs/claim   → 200 {"job":{"id":"e5ea6317-...","kind":"observer","payload":{...},"attempts":1,...}}
+   POST /api/v1/jobs/report  → 200 {"ok":true}
+   DB row:                     claimed=true, completed=true, attempts=1, result.status="succeeded"
+   ```
+5. **Umayr canary SAME:** `GET /person/67050b91-5011-4ba6-b230-9a387879717a/card` (live dev server) returns `{name:"Umayr Sheik", category:"team", company:"SinX Solutions", title:"Founder", phones:["+971586783040"], emails:[3], relationship_to_me:"Close friend and tech peer based in Dubai..."}` — bit-identical to `outputs/verification/2026-04-19-umayr-v0/card.json` baseline.
+6. **`npm test`: 529 passed / 2 skipped** (was 507 at start — +22 passing: 15 new `v1-jobs.test.ts` tests + 2 CLI-verb tests + 5 pre-existing tests reorganized to exercise the new `kinds[]` contract).
+
+**Sibling coordination:** `pg_cron` was not installed on the project; I enabled it via `CREATE EXTENSION pg_cron` which Supabase allowed without further action. No other sibling work touched.
+
+**Cost:** enricher-v5 was NOT run against live data (would have spent ~$1-2 and re-enriched 1,470 people). The script was written + validated via unit tests; the claw systemd timer will trigger the first live enricher run on the next 1st/15th of the month tick. When invoked, Haiku pricing puts the full sweep at ~$1.50 estimate ($8 hard ceiling).
+
+**Rollback:** `DROP TABLE public.jobs CASCADE; DROP FUNCTION public.enqueue_job(uuid,text,jsonb); DROP FUNCTION public.claim_next_job(uuid,text,text[]); DROP FUNCTION public.report_job_result(uuid,uuid,text,jsonb); DROP TABLE public.observer_watermarks CASCADE; DROP FUNCTION public.cron_enqueue_observer_ticks(); DROP FUNCTION public.cron_enqueue_enricher_ticks(); DROP FUNCTION public.cron_enqueue_meeting_sync_ticks(); SELECT cron.unschedule('orbit-observer-tick'); SELECT cron.unschedule('orbit-meeting-sync-tick'); SELECT cron.unschedule('orbit-enricher-tick');` + revert the new routes + CLI client changes. No existing DB row touched.
+
+**Commit:** working-tree only (no commit per instructions). Base commit: `6e9b2fc`.

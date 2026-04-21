@@ -28,6 +28,7 @@ import {
   orbitMessagesFetch,
   orbitJobsClaim,
   orbitJobsReport,
+  orbitLidBridgeUpsert,
 } from "../../orbit-cli-plugin/lib/client.mjs";
 import { resolveConfig } from "../../orbit-cli-plugin/lib/env.mjs";
 
@@ -622,10 +623,10 @@ describe("orbit_messages_fetch", () => {
 describe("orbit_jobs_claim", () => {
   it("happy path: POST /jobs/claim returns the job envelope", async () => {
     const fetchMock = makeFetch(() =>
-      jsonResponse({ job: { id: "job_1", capability: "orbit-observer" } }),
+      jsonResponse({ job: { id: "job_1", kind: "observer", payload: {} } }),
     );
     const r = await orbitJobsClaim(
-      { agent: "wazowski" },
+      { agent: "wazowski", kinds: ["observer", "enricher"] },
       { config: CFG, fetchImpl: fetchMock },
     );
     expect(r.job.id).toBe("job_1");
@@ -634,24 +635,32 @@ describe("orbit_jobs_claim", () => {
     );
     const body = JSON.parse(fetchMock.calls[0].init.body);
     expect(body.agent).toBe("wazowski");
+    expect(body.kinds).toEqual(["observer", "enricher"]);
   });
 
-  it("structured error: Phase 5 route 404s cleanly (NOT_FOUND)", async () => {
-    const fetchMock = makeFetch(() =>
-      jsonResponse({ error: "not yet shipped" }, { status: 404 }),
-    );
+  it("empty queue: server returns {job:null}", async () => {
+    const fetchMock = makeFetch(() => jsonResponse({ job: null }));
     const r = await orbitJobsClaim(
-      { agent: "wazowski" },
+      { agent: "wazowski", kinds: ["observer"] },
       { config: CFG, fetchImpl: fetchMock },
     );
-    expect(r.error.code).toBe("NOT_FOUND");
-    expect(r.error.http_status).toBe(404);
+    expect(r.job).toBeNull();
   });
 
   it("structured error: missing agent rejected locally, no fetch", async () => {
     const fetchMock = makeFetch(() => jsonResponse({}));
     const r = await orbitJobsClaim(
-      {},
+      { kinds: ["observer"] },
+      { config: CFG, fetchImpl: fetchMock },
+    );
+    expect(r.error.code).toBe("INVALID_INPUT");
+    expect(fetchMock.calls).toHaveLength(0);
+  });
+
+  it("structured error: missing kinds rejected locally, no fetch", async () => {
+    const fetchMock = makeFetch(() => jsonResponse({}));
+    const r = await orbitJobsClaim(
+      { agent: "wazowski" },
       { config: CFG, fetchImpl: fetchMock },
     );
     expect(r.error.code).toBe("INVALID_INPUT");
@@ -681,6 +690,63 @@ describe("orbit_jobs_report", () => {
     );
     expect(r.error.code).toBe("INVALID_INPUT");
     expect(r.error.message).toMatch(/not one of/);
+    expect(fetchMock.calls).toHaveLength(0);
+  });
+});
+
+// =========================================================================
+// orbit_lid_bridge_upsert
+// =========================================================================
+
+describe("orbit_lid_bridge_upsert", () => {
+  function entry(lid = "135046807695474", phone = "919136820958") {
+    return { lid, phone };
+  }
+
+  it("happy path: POST /lid_bridge/upsert returns {upserted}", async () => {
+    const fetchMock = makeFetch(() => jsonResponse({ upserted: 2 }));
+    const r = await orbitLidBridgeUpsert(
+      {
+        entries: [
+          entry("135046807695474", "919136820958"),
+          entry("19812700926200", "917506660554"),
+        ],
+      },
+      { config: CFG, fetchImpl: fetchMock },
+    );
+    expect(r.upserted).toBe(2);
+    expect(fetchMock.calls[0].url).toBe(
+      "http://100.97.152.84:3047/api/v1/lid_bridge/upsert",
+    );
+    const body = JSON.parse(fetchMock.calls[0].init.body);
+    expect(body.entries).toHaveLength(2);
+    expect(body.entries[0].lid).toBe("135046807695474");
+    expect(body.entries[0].phone).toBe("919136820958");
+  });
+
+  it("structured error: empty batch rejected locally, no fetch", async () => {
+    const fetchMock = makeFetch(() => jsonResponse({}));
+    const r = await orbitLidBridgeUpsert(
+      { entries: [] },
+      { config: CFG, fetchImpl: fetchMock },
+    );
+    expect(r.error).toBeDefined();
+    expect(r.error.code).toBe("INVALID_INPUT");
+    expect(r.error.message).toMatch(/empty/);
+    expect(fetchMock.calls).toHaveLength(0);
+  });
+
+  it("structured error: > 1000 entries rejected locally", async () => {
+    const many = Array.from({ length: 1001 }, (_, i) =>
+      entry(String(1000000 + i), String(910000000000 + i)),
+    );
+    const fetchMock = makeFetch(() => jsonResponse({}));
+    const r = await orbitLidBridgeUpsert(
+      { entries: many },
+      { config: CFG, fetchImpl: fetchMock },
+    );
+    expect(r.error.code).toBe("INVALID_INPUT");
+    expect(r.error.message).toMatch(/exceeds server cap/);
     expect(fetchMock.calls).toHaveLength(0);
   });
 });

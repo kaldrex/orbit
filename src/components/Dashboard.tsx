@@ -15,7 +15,6 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import PersonPanel from "@/components/PersonPanel";
 import AddContactDialog from "@/components/AddContactDialog";
-import MeetingsStrip from "@/components/MeetingsStrip";
 import IntroPathSearch, { type PathState } from "@/components/graph/IntroPathSearch";
 import PathStrip from "@/components/graph/PathStrip";
 import CommunityToggle from "@/components/graph/CommunityToggle";
@@ -189,14 +188,6 @@ export function Dashboard({ user }: DashboardProps) {
         </DropdownMenu>
         </div>
       </header>
-
-      {/* Upcoming-meetings strip — renders nothing when the next 48h
-          is empty, so layout stays unchanged on quiet days. */}
-      <MeetingsStrip
-        isDark={isDark}
-        onSelectPerson={(id) => setSelectedPerson(id)}
-        horizonHours={48}
-      />
 
       {/* Main area */}
       <div className="flex-1 flex min-h-0">

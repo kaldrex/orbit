@@ -22,7 +22,12 @@ const MAX_READ_LIMIT = 1000;
  * no-op at Postgres level. Max 100 rows per batch.
  *
  * Body: Observation[] (see src/lib/observations-schema.ts)
- * Response: { ok: true, accepted, inserted, deduped }
+ * Response: { ok: true, accepted, inserted, deduped, inserted_ids }
+ *
+ * `inserted_ids` lists the uuid of every row that actually landed (in
+ * batch order, skipping dedup hits). Clients that need to follow up with
+ * a dependent write (e.g. AddContactDialog posting a kind:"merge" right
+ * after a kind:"person") read it from here.
  */
 export async function POST(request: Request) {
   const auth = await getAgentOrSessionAuth(request);
@@ -63,14 +68,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "write failed" }, { status: 502 });
   }
 
-  const counts = Array.isArray(data) && data[0]
+  const row = Array.isArray(data) && data[0]
     ? data[0]
-    : { inserted: 0, deduped: 0 };
+    : { inserted: 0, deduped: 0, inserted_ids: [] as string[] };
+  const insertedIds: string[] = Array.isArray(row.inserted_ids)
+    ? row.inserted_ids
+    : [];
   return NextResponse.json({
     ok: true,
     accepted: parsed.data.length,
-    inserted: counts.inserted,
-    deduped: counts.deduped,
+    inserted: row.inserted,
+    deduped: row.deduped,
+    inserted_ids: insertedIds,
   });
 }
 

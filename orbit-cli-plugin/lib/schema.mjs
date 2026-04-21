@@ -79,9 +79,13 @@ const correctionPayloadSchema = z.object({
   source: z.enum(CORRECTION_SOURCES),
 });
 
+// See src/lib/observations-schema.ts — single-source merge is valid.
+// A length-1 merged_observation_ids materializes a person from one source
+// observation (manual entry or single-channel observer). Kept in sync with
+// the server-side relaxed rule from 20260421_single_source_merge.sql.
 const mergePayloadSchema = z.object({
   person_id: z.string().uuid(),
-  merged_observation_ids: z.array(z.string().uuid()).min(2),
+  merged_observation_ids: z.array(z.string().uuid()).min(1),
   deterministic_bridges: z.array(z.string().max(256)).default([]),
 });
 

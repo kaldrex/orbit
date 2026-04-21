@@ -82,9 +82,16 @@ const correctionPayloadSchema = z.object({
   source: z.enum(CORRECTION_SOURCES),
 });
 
+// Single-source merge is a valid terminal state (see
+// memory/project_single_source_valid.md). A kind:"merge" with exactly one
+// merged_observation_id materializes a person from a single origin obs —
+// this is what the AddContactDialog uses for manual entry, and what a
+// per-channel observer emits when only one channel has evidence for the
+// human. Multi-source clusters use .length >= 2 and carry their bridges
+// in deterministic_bridges[]; the shape is the same.
 const mergePayloadSchema = z.object({
   person_id: z.string().uuid(),
-  merged_observation_ids: z.array(z.string().uuid()).min(2),
+  merged_observation_ids: z.array(z.string().uuid()).min(1),
   deterministic_bridges: z.array(z.string().max(256)).default([]),
 });
 

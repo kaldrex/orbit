@@ -18,6 +18,7 @@ import {
   orbitMessagesFetch,
   orbitJobsClaim,
   orbitJobsReport,
+  orbitLidBridgeUpsert,
 } from "./lib/client.mjs";
 import { resolveConfig } from "./lib/env.mjs";
 
@@ -78,7 +79,7 @@ export default definePluginEntry({
   id: "orbit-cli",
   name: "Orbit CLI",
   description:
-    "Plumbing-only wrapper around Orbit's HTTP API. 15 tools: orbit_observation_emit, orbit_observation_bulk, orbit_person_get, orbit_persons_list_enriched, orbit_self_init, orbit_persons_going_cold, orbit_person_get_by_email, orbit_meeting_upsert, orbit_meeting_list, orbit_topics_upsert, orbit_topics_get, orbit_calendar_fetch, orbit_messages_fetch, orbit_jobs_claim, orbit_jobs_report.",
+    "Plumbing-only wrapper around Orbit's HTTP API. 16 tools: orbit_observation_emit, orbit_observation_bulk, orbit_person_get, orbit_persons_list_enriched, orbit_self_init, orbit_persons_going_cold, orbit_person_get_by_email, orbit_meeting_upsert, orbit_meeting_list, orbit_topics_upsert, orbit_topics_get, orbit_calendar_fetch, orbit_messages_fetch, orbit_jobs_claim, orbit_jobs_report, orbit_lid_bridge_upsert.",
   register(api) {
     // --- Observations ----------------------------------------------------
     api.registerTool({
@@ -368,11 +369,11 @@ export default definePluginEntry({
       execute: withCfg(orbitMessagesFetch),
     });
 
-    // --- Jobs (Phase 5 prereq — routes not shipped yet) -----------------
+    // --- Jobs (Phase 5 — Living Orbit) ----------------------------------
     api.registerTool({
       name: "orbit_jobs_claim",
       description:
-        "POST /api/v1/jobs/claim — claim the next job for this agent. Phase 5 prereq: this verb is a thin proxy; the server route does not ship until Phase 5, so today it returns {error:{code:'NOT_FOUND'...}}. SKILLs can wire against it now and flip to live once the route lands.",
+        "POST /api/v1/jobs/claim — atomically claim the oldest unclaimed job for the authed user whose kind is in `kinds[]`. Returns {job:{id, kind, payload, attempts, created_at}} on hit, {job:null} when the queue is empty. Agents poll this from a systemd timer / openclaw scheduler.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -381,12 +382,14 @@ export default definePluginEntry({
             type: "string",
             description: "Agent id. Required (e.g. 'wazowski').",
           },
-          capability: {
-            type: "string",
-            description: "Optional capability filter (e.g. 'orbit-observer').",
+          kinds: {
+            type: "array",
+            description:
+              "Non-empty list of job kinds this agent can handle (e.g. ['observer','enricher','meeting_sync','topic_resonance']).",
+            items: { type: "string" },
           },
         },
-        required: ["agent"],
+        required: ["agent", "kinds"],
       },
       execute: withCfg(orbitJobsClaim),
     });
@@ -394,7 +397,7 @@ export default definePluginEntry({
     api.registerTool({
       name: "orbit_jobs_report",
       description:
-        "POST /api/v1/jobs/report — report a claimed job's outcome. Phase 5 prereq: will 404 until the server route ships. status must be one of: 'succeeded', 'failed', 'retry'.",
+        "POST /api/v1/jobs/report — report a claimed job's outcome. status must be one of: 'succeeded', 'failed', 'retry'. 'retry' resets claimed_at so the job is re-claimable.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -420,6 +423,27 @@ export default definePluginEntry({
         required: ["job_id", "status"],
       },
       execute: withCfg(orbitJobsReport),
+    });
+
+    // --- LID bridge -----------------------------------------------------
+    api.registerTool({
+      name: "orbit_lid_bridge_upsert",
+      description:
+        "POST /api/v1/lid_bridge/upsert — bulk-upsert WhatsApp LID→phone bridge entries. The bridge is a projection of claw's ~/.wacli/session.db whatsmeow_lid_map, copied into Postgres so graph-populate can resolve `@lid`-only group senders back to persons. Body: {entries: [{lid: '<digits>', phone: '<digits>', last_seen?: '<ISO>'}]}. Max 1000 entries per call. Returns {upserted: N}. Idempotent on (user_id, lid).",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          entries: {
+            type: "array",
+            description:
+              "Array of bridge entries. Each item: {lid, phone, last_seen?}. Upserts are idempotent on (user_id, lid).",
+            items: { type: "object" },
+          },
+        },
+        required: ["entries"],
+      },
+      execute: withCfg(orbitLidBridgeUpsert),
     });
   },
 });

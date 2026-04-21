@@ -1062,21 +1062,28 @@ export async function orbitMessagesFetch(
 }
 
 /**
- * POST /jobs/claim — Phase 5 prereq. Claims the next job for this agent.
- * Will 404 until the Phase 5 jobs route ships; the verb is a thin proxy so
- * SKILLs can be written today and flip to live once the route lands.
+ * POST /jobs/claim — Phase 5 (live). Atomically claim the oldest unclaimed
+ * job whose kind is in `kinds[]`. Returns {job: {id, kind, payload,
+ * attempts, created_at}} on hit, {job: null} when the queue is empty.
  *
  * params.agent: agent id string (e.g. "wazowski"). Required.
- * params.capability: optional filter (e.g. "orbit-observer").
+ * params.kinds: non-empty array of job kinds this agent can handle
+ *               (e.g. ["observer","enricher","meeting_sync","topic_resonance"]).
  */
 export async function orbitJobsClaim(
-  { agent, capability } = {},
+  { agent, kinds } = {},
   { config, fetchImpl = fetch } = {},
 ) {
   if (!agent || typeof agent !== "string") {
     return invalidInputError(
       "agent (string) is required",
-      "Pass {agent: 'wazowski', capability?: 'orbit-observer'}.",
+      "Pass {agent: 'wazowski', kinds: ['observer','enricher',...]}.",
+    );
+  }
+  if (!Array.isArray(kinds) || kinds.length === 0) {
+    return invalidInputError(
+      "kinds (non-empty string array) is required",
+      "Pass kinds: ['observer','enricher','meeting_sync','topic_resonance'].",
     );
   }
   const w = unwrapConfig(config);
@@ -1088,7 +1095,7 @@ export async function orbitJobsClaim(
     res = await fetchImpl(target, {
       method: "POST",
       headers: authHeaders(key),
-      body: JSON.stringify({ agent, capability: capability ?? null }),
+      body: JSON.stringify({ agent, kinds }),
     });
   } catch (e) {
     return networkError(e);
@@ -1144,6 +1151,58 @@ export async function orbitJobsReport(
         result: result ?? null,
         error: error ?? null,
       }),
+    });
+  } catch (e) {
+    return networkError(e);
+  }
+  const body = await readBody(res);
+  if (!res.ok) return httpError(res, body);
+  return body;
+}
+
+/**
+ * POST /lid_bridge/upsert — bulk-upsert LID→phone bridge entries (projected
+ * from claw's whatsmeow_lid_map table into Postgres so graph-populate can
+ * resolve group-message `@lid` senders back to persons).
+ *
+ * params.entries: array of {lid: string, phone: string, last_seen?: ISO8601}.
+ *                 Max 1000 entries per call (server cap).
+ *
+ * Returns {upserted: N} on 2xx. The CLI does a minimal pre-check
+ * (non-empty array, <= 1000 entries); full shape validation is server-side.
+ */
+export async function orbitLidBridgeUpsert(
+  { entries } = {},
+  { config, fetchImpl = fetch } = {},
+) {
+  if (!Array.isArray(entries)) {
+    return invalidInputError(
+      "entries (array) is required",
+      "Pass {entries: [{lid: '<digits>', phone: '<digits>', last_seen?: '<ISO>'}]}.",
+    );
+  }
+  if (entries.length === 0) {
+    return invalidInputError(
+      "entries array is empty",
+      "Pass at least one bridge entry; empty batches are rejected server-side.",
+    );
+  }
+  if (entries.length > 1000) {
+    return invalidInputError(
+      `entries batch size ${entries.length} exceeds server cap of 1000`,
+      "Split the batch into chunks of at most 1000 entries.",
+    );
+  }
+  const w = unwrapConfig(config);
+  if (w.error) return { error: w.error };
+  const { url, key } = w.config;
+  const target = joinUrl(url, "/lid_bridge/upsert");
+  let res;
+  try {
+    res = await fetchImpl(target, {
+      method: "POST",
+      headers: authHeaders(key),
+      body: JSON.stringify({ entries }),
     });
   } catch (e) {
     return networkError(e);

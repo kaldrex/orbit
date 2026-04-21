@@ -1,0 +1,14 @@
+[Unit]
+Description=Orbit job runner (one tick)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=sanchay
+EnvironmentFile=/home/sanchay/.orbit/env
+ExecStart=/home/sanchay/orbit-job-runner/run-once.sh
+StandardOutput=append:/home/sanchay/orbit-enrichment-logs/job-runner/systemd.log
+StandardError=append:/home/sanchay/orbit-enrichment-logs/job-runner/systemd.log
+# Fail fast if the script hangs — the next tick will retry anyway.
+TimeoutStartSec=300

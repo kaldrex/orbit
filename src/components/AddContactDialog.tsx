@@ -12,6 +12,21 @@ const CATEGORIES = [
   "community", "founder", "friend", "press", "other",
 ];
 
+// RFC4122 v4 uuid using the browser's crypto API. Falls back to a
+// constructed one if crypto.randomUUID isn't available (very old browsers).
+function uuid(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  const bytes = new Uint8Array(16);
+  (typeof crypto !== "undefined" ? crypto : { getRandomValues: (a: Uint8Array) => { for (let i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256); return a; } })
+    .getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const h = Array.from(bytes, (b) => b.toString(16).padStart(2, "0"));
+  return `${h.slice(0, 4).join("")}-${h.slice(4, 6).join("")}-${h.slice(6, 8).join("")}-${h.slice(8, 10).join("")}-${h.slice(10, 16).join("")}`;
+}
+
 function makePersonObservation(input: {
   name: string;
   company?: string;
@@ -35,6 +50,26 @@ function makePersonObservation(input: {
       relationship_to_me: "",
       phones: [],
       emails,
+    },
+  };
+}
+
+function makeSingleSourceMergeObservation(input: {
+  personId: string;
+  sourceObservationId: string;
+}) {
+  const now = new Date().toISOString();
+  return {
+    kind: "merge" as const,
+    observed_at: now,
+    observer: "wazowski" as const,
+    evidence_pointer: `manual://dashboard/add-contact/merge/${input.personId}`,
+    confidence: 1.0,
+    reasoning: "Single-source merge: materialize person from one manual-entry observation.",
+    payload: {
+      person_id: input.personId,
+      merged_observation_ids: [input.sourceObservationId],
+      deterministic_bridges: [] as string[],
     },
   };
 }
@@ -63,26 +98,56 @@ export default function AddContactDialog({ open, onClose, onAdded }: AddContactD
     setLoading(true);
     setResult(null);
 
-    const res = await fetch("/api/v1/observations", {
+    // Step 1: write the person observation.
+    const personObs = makePersonObservation({ name, company, email, category });
+    const personRes = await fetch("/api/v1/observations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        observations: [makePersonObservation({ name, company, email, category })],
-      }),
+      body: JSON.stringify([personObs]),
     });
 
-    if (res.ok) {
-      setName("");
-      setCompany("");
-      setEmail("");
-      setCategory("other");
-      setResult("Contact recorded");
+    if (!personRes.ok) {
+      const d = await personRes.json().catch(() => ({}));
+      setResult(d?.error?.message || d?.error || "Failed");
+      setLoading(false);
+      return;
+    }
+
+    const personBody = await personRes.json().catch(() => ({}));
+    const sourceObsId: string | undefined = personBody?.inserted_ids?.[0];
+    if (!sourceObsId) {
+      // Dedupe hit or empty response — no new obs, nothing to merge.
+      setName(""); setCompany(""); setEmail(""); setCategory("other");
+      setResult("Contact already on file");
       onAdded();
       setTimeout(() => { setResult(null); onClose(); }, 800);
-    } else {
-      const d = await res.json().catch(() => ({}));
-      setResult(d?.error?.message || d?.error || "Failed");
+      setLoading(false);
+      return;
     }
+
+    // Step 2: materialize the person via a single-source merge.
+    const personId = uuid();
+    const mergeObs = makeSingleSourceMergeObservation({
+      personId,
+      sourceObservationId: sourceObsId,
+    });
+    const mergeRes = await fetch("/api/v1/observations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify([mergeObs]),
+    });
+
+    if (!mergeRes.ok) {
+      const d = await mergeRes.json().catch(() => ({}));
+      setResult(d?.error?.message || d?.error || "Materialize failed");
+      setLoading(false);
+      return;
+    }
+
+    setName(""); setCompany(""); setEmail(""); setCategory("other");
+    setResult("Contact added");
+    onAdded();
+    setTimeout(() => { setResult(null); onClose(); }, 800);
     setLoading(false);
   }
 
@@ -112,19 +177,20 @@ export default function AddContactDialog({ open, onClose, onAdded }: AddContactD
       return;
     }
 
-    // /api/v1/observations caps the batch at 100 per POST.
+    // /api/v1/observations caps the batch at 100 per POST. Batch person
+    // obs by 100, then chase each person_id with a single-source merge.
     const observations = contacts.map(makePersonObservation);
     const chunks: typeof observations[] = [];
     for (let i = 0; i < observations.length; i += 100) {
       chunks.push(observations.slice(i, i + 100));
     }
 
-    let created = 0;
+    const allPersonObsIds: string[] = [];
     for (const batch of chunks) {
       const res = await fetch("/api/v1/observations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ observations: batch }),
+        body: JSON.stringify(batch),
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
@@ -132,10 +198,35 @@ export default function AddContactDialog({ open, onClose, onAdded }: AddContactD
         setLoading(false);
         return;
       }
-      created += batch.length;
+      const body = await res.json().catch(() => ({}));
+      const ids: string[] = Array.isArray(body?.inserted_ids) ? body.inserted_ids : [];
+      allPersonObsIds.push(...ids);
     }
 
-    setResult(`${created} contacts recorded`);
+    // Materialize each new person with a single-source merge. One merge
+    // per person obs (can't share a person_id across distinct contacts).
+    const merges = allPersonObsIds.map((obsId) =>
+      makeSingleSourceMergeObservation({ personId: uuid(), sourceObservationId: obsId })
+    );
+    const mergeChunks: typeof merges[] = [];
+    for (let i = 0; i < merges.length; i += 100) {
+      mergeChunks.push(merges.slice(i, i + 100));
+    }
+    for (const batch of mergeChunks) {
+      const res = await fetch("/api/v1/observations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(batch),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setResult(d?.error?.message || d?.error || "Materialize failed");
+        setLoading(false);
+        return;
+      }
+    }
+
+    setResult(`${allPersonObsIds.length} contacts added`);
     setCsvText("");
     onAdded();
     setTimeout(() => { setResult(null); onClose(); }, 1200);

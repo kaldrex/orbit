@@ -16,8 +16,18 @@ vi.mock("@supabase/supabase-js", () => ({
     rpc: async (name: string, args: Record<string, unknown>) => {
       rpcCalls.push({ name, args });
       if (rpcResponse) return rpcResponse;
+      const n = (args.p_rows as unknown[]).length;
       return {
-        data: [{ inserted: (args.p_rows as unknown[]).length, deduped: 0 }],
+        data: [{
+          inserted: n,
+          deduped: 0,
+          // Deterministic fake uuids, one per row, to mimic the RPC's
+          // new inserted_ids[] return field from 20260421_single_source_merge.
+          inserted_ids: Array.from(
+            { length: n },
+            (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`
+          ),
+        }],
         error: null,
       };
     },
@@ -68,8 +78,51 @@ describe("POST /api/v1/observations", () => {
     expect(body.accepted).toBe(1);
     expect(body.inserted).toBe(1);
     expect(body.deduped).toBe(0);
+    expect(body.inserted_ids).toHaveLength(1);
+    expect(body.inserted_ids[0]).toMatch(/^[0-9a-f-]{36}$/);
     expect(rpcCalls[0].name).toBe("upsert_observations");
     expect(rpcCalls[0].args.p_user_id).toBe("user-1");
+  });
+
+  it("accepts a single-source merge (1 merged_observation_id)", async () => {
+    // Canary for the 20260421_single_source_merge migration: the Zod
+    // layer must now accept merged_observation_ids with length 1.
+    const singleSourceMerge = {
+      observed_at: "2026-04-19T12:00:00Z",
+      observer: "wazowski",
+      kind: "merge",
+      evidence_pointer: "manual://dashboard/add-contact/merge/p1",
+      confidence: 1.0,
+      reasoning: "Single-source materialization from manual entry.",
+      payload: {
+        person_id: "00000000-0000-4000-8000-000000000aaa",
+        merged_observation_ids: ["00000000-0000-4000-8000-000000000001"],
+        deterministic_bridges: [],
+      },
+    };
+    const res = await POST(makeReq([singleSourceMerge]));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.inserted).toBe(1);
+    expect(body.inserted_ids).toHaveLength(1);
+  });
+
+  it("rejects zero-merged-ids merge at the Zod layer", async () => {
+    const zeroMerge = {
+      observed_at: "2026-04-19T12:00:00Z",
+      observer: "wazowski",
+      kind: "merge",
+      evidence_pointer: "manual://dashboard/add-contact/merge/p2",
+      confidence: 1.0,
+      reasoning: "empty-ids merge should fail",
+      payload: {
+        person_id: "00000000-0000-4000-8000-000000000bbb",
+        merged_observation_ids: [],
+        deterministic_bridges: [],
+      },
+    };
+    const res = await POST(makeReq([zeroMerge]));
+    expect(res.status).toBe(400);
   });
 
   it("rejects an empty batch", async () => {
