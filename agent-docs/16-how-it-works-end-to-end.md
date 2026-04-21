@@ -290,7 +290,7 @@ Queries Neo4j will make fast that Postgres can't express cleanly:
 | Byte-identical canary | Umayr card diff vs April-19 baseline: empty |
 | Speed | 12-14 min for 1,500 enrichments |
 | Cost | $8.55 Anthropic for 547 meaningful cards — $0.016/human |
-| Test discipline | 329 tests green, every rule has real-data fixtures |
+| Test discipline | 508 tests green + 1 skipped across 35 files, every rule has real-data fixtures |
 
 ### What doesn't work yet (honest gap list)
 

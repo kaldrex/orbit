@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
@@ -17,8 +17,6 @@ import PersonPanel from "@/components/PersonPanel";
 import AddContactDialog from "@/components/AddContactDialog";
 import IntroPathSearch, { type PathState } from "@/components/graph/IntroPathSearch";
 import PathStrip from "@/components/graph/PathStrip";
-import CommunityToggle from "@/components/graph/CommunityToggle";
-import { useGraphIntelligence } from "@/components/graph/useGraphIntelligence";
 
 // Reagraph uses WebGL — must be client-only, no SSR
 const GraphCanvas = dynamic(() => import("@/components/graph/GraphCanvas"), {
@@ -54,21 +52,16 @@ export function Dashboard({ user }: DashboardProps) {
   const [showAddContact, setShowAddContact] = useState(false);
   const [graphKey, setGraphKey] = useState(0);
   const [isDark, setIsDark] = useState(true);
-  const [communityView, setCommunityView] = useState(false);
   const [pathState, setPathState] = useState<PathState>({ kind: "idle" });
-  const intel = useGraphIntelligence();
 
-  // /api/v1/graph returns empty arrays + zero stats until Neo4j is
-  // populated (the route degrades gracefully to HTTP 200). Once populate
-  // runs, the same shape hydrates the dashboard without a client change.
-  useEffect(() => {
-    fetch("/api/v1/graph")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (d?.stats) setStats({ totalPeople: d.stats.totalPeople ?? 0, goingCold: d.stats.goingCold ?? 0 });
-      })
-      .catch(() => {});
-  }, []);
+  // Stats flow up from GraphCanvas via onStats — the graph already
+  // fetches /api/v1/graph through useGraphData, so a second fetch here
+  // would be redundant. /api/v1/graph still degrades gracefully to
+  // HTTP 200 with zero stats until Neo4j is populated.
+  const handleStats = useCallback(
+    (s: { totalPeople: number; goingCold: number }) => setStats(s),
+    [],
+  );
 
   // One-shot self-init: close the onboarding gap where profiles.self_node_id
   // hasn't been resolved yet. POSTs /api/v1/self/init (idempotent on the
@@ -127,15 +120,6 @@ export function Dashboard({ user }: DashboardProps) {
             ))}
           </div>
 
-          {/* Community-view toggle — relies on /graph/communities. */}
-          <CommunityToggle
-            on={communityView}
-            onToggle={() => setCommunityView((v) => !v)}
-            componentCount={intel.componentCount}
-            unavailable={intel.unavailable}
-            isDark={isDark}
-          />
-
           {/* Intro-path type-ahead — relies on /graph/path. */}
           {selfNodeId && (
             <IntroPathSearch
@@ -151,6 +135,7 @@ export function Dashboard({ user }: DashboardProps) {
             onClick={() => setIsDark((d) => !d)}
             className={`h-7 w-7 rounded-md flex items-center justify-center text-[13px] transition-colors ${isDark ? "text-zinc-400 hover:bg-zinc-800" : "text-zinc-500 hover:bg-zinc-200"}`}
             title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+            aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
           >
             {isDark ? "☀" : "☾"}
           </button>
@@ -200,8 +185,7 @@ export function Dashboard({ user }: DashboardProps) {
               activeFilter={activeFilter}
               selfNodeId={selfNodeId}
               isDark={isDark}
-              communityColor={communityView ? intel.communityColor : null}
-              hubScore={intel.hubScore}
+              onStats={handleStats}
             />
           ) : (
             <div className="h-full flex items-center justify-center text-zinc-500 text-sm">
@@ -221,7 +205,6 @@ export function Dashboard({ user }: DashboardProps) {
           <PersonPanel
             personId={selectedPerson}
             onClose={() => setSelectedPerson(null)}
-            onSelectPerson={(id) => setSelectedPerson(id)}
           />
         )}
       </div>

@@ -89,9 +89,9 @@ The V0 approach: per-person agentic resolution driven by the LLM, rules as tools
 
 - **Frontend + backend:** Next.js 16 App Router + Turbopack. Read `node_modules/next/dist/docs/` before writing route code — breaking changes from older Next versions.
 - **Ledger + auth + observations:** Supabase Postgres. Connection in `.env.local`. Migration flow in [06-operating.md](./06-operating.md). Supabase is a test/clone environment (`project_supabase_is_test_env.md`).
-- **Graph:** Neo4j Aura (currently empty; first-class in architecture). Env var gotcha: some deployments have literal `\n` suffixes on `NEO4J_URI`, `NEO4J_USER`, `NEO4J_DATABASE` — `.trim()` in every caller.
+- **Graph:** Neo4j Aura (populated — 1,602 `:Person` nodes + 1,232 edges as of 2026-04-21). One-way projection from Postgres card data via `/api/v1/graph/populate`. Env var gotcha: some deployments have literal `\n` suffixes on `NEO4J_URI`, `NEO4J_USER`, `NEO4J_DATABASE` — `.trim()` in every caller. See [18-neo4j-edge-model-proposal.md](./18-neo4j-edge-model-proposal.md).
 - **Auth primitives:** Supabase session cookies for UI, API keys for agents. See [src/lib/api-auth.ts](../src/lib/api-auth.ts).
-- **Tests:** Vitest. **329 tests across 19 files, full suite ~1.2s.**
+- **Tests:** Vitest. **508 tests + 1 skipped across 35 files, full suite ~8 s.**
 
 ## Further reading
 

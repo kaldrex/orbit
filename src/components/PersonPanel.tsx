@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { CATEGORY_META } from "@/lib/graph-transforms";
-import { Button } from "@/components/ui/button";
 import { topicChipStyle } from "@/lib/topic-chip";
 
 interface PersonProfile {
@@ -11,7 +10,6 @@ interface PersonProfile {
   company: string | null;
   title: string | null;
   email: string | null;
-  score: number;
   category: string | null;
   lastInteractionAt: string | null;
 }
@@ -24,11 +22,6 @@ interface Interaction {
   topic_summary: string | null;
 }
 
-interface SharedConnection {
-  id: string;
-  name: string;
-}
-
 interface TopicChip {
   topic: string;
   weight: number;
@@ -37,10 +30,12 @@ interface TopicChip {
 interface PersonData {
   profile: PersonProfile;
   interactions: Interaction[];
-  sharedConnections: SharedConnection[];
   relationship: string;
 }
 
+// Narrow to the fields actually rendered. The card envelope returns
+// more (phones, recent_corrections, total, …) but PersonPanel only
+// consumes these — everything else is intentionally dropped.
 interface CardEnvelope {
   card: {
     person_id: string;
@@ -48,11 +43,9 @@ interface CardEnvelope {
     company: string | null;
     title: string | null;
     category: string | null;
-    phones: string[];
     emails: string[];
     relationship_to_me: string;
     last_touch: string | null;
-    one_paragraph_summary: string;
     observations: {
       interactions: Array<{
         channel?: string | null;
@@ -60,8 +53,6 @@ interface CardEnvelope {
         summary?: string | null;
         topic?: string | null;
       }>;
-      recent_corrections: unknown[];
-      total: number;
     };
   };
 }
@@ -69,11 +60,9 @@ interface CardEnvelope {
 export default function PersonPanel({
   personId,
   onClose,
-  onSelectPerson,
 }: {
   personId: string;
   onClose: () => void;
-  onSelectPerson?: (id: string) => void;
 }) {
   const [data, setData] = useState<PersonData | null>(null);
   const [topics, setTopics] = useState<TopicChip[]>([]);
@@ -106,7 +95,6 @@ export default function PersonPanel({
             company: c.company,
             title: c.title,
             email: c.emails[0] ?? null,
-            score: 5,
             category: c.category,
             lastInteractionAt: c.last_touch,
           },
@@ -117,7 +105,6 @@ export default function PersonPanel({
             summary: i.summary ?? null,
             topic_summary: i.topic ?? null,
           })),
-          sharedConnections: [],
           relationship: c.relationship_to_me ?? "",
         });
       }
@@ -134,10 +121,10 @@ export default function PersonPanel({
     : CATEGORY_META.other;
 
   // Days-since-last-touch — shown next to the category pill whenever
-  // `last_touch` is populated. Amber when days_since > 14 AND score >= 5,
-  // mirroring the Going Cold graph filter so the founder spots stale
-  // high-value relationships at a glance. The canonical cold flag lives
-  // in the graph payload; this is the panel-local surfacing.
+  // `last_touch` is populated. Amber when days_since > 14, mirroring
+  // the Going Cold graph filter so the founder spots stale
+  // relationships at a glance. The canonical cold flag lives in the
+  // graph payload; this is the panel-local surfacing.
   let daysSince: number | null = null;
   if (data?.profile.lastInteractionAt) {
     const ts = Date.parse(data.profile.lastInteractionAt);
@@ -148,11 +135,7 @@ export default function PersonPanel({
       );
     }
   }
-  // Mirrors the server-side threshold in src/lib/graph-transforms.ts and
-  // /api/v1/persons/going-cold (MIN_SCORE). Score is ≥ 2 for humans with
-  // sustained interaction history.
-  const isGoingCold =
-    daysSince !== null && daysSince > 14 && (data?.profile.score ?? 0) >= 2;
+  const isGoingCold = daysSince !== null && daysSince > 14;
 
   return (
     <div className="h-full w-[380px] flex flex-col border-l border-zinc-800/40 bg-[#0c0c10]">
@@ -161,6 +144,7 @@ export default function PersonPanel({
         <span className="text-[13px] font-medium text-zinc-400">Person</span>
         <button
           onClick={onClose}
+          aria-label="Close person panel"
           className="text-zinc-500 hover:text-zinc-300 transition-colors text-lg leading-none"
         >
           &times;
@@ -217,7 +201,6 @@ export default function PersonPanel({
                   {daysSince}d
                 </span>
               )}
-              <span>Score: {data.profile.score.toFixed(1)}</span>
               {data.profile.email && <span>{data.profile.email}</span>}
             </div>
 
@@ -283,27 +266,6 @@ export default function PersonPanel({
               </div>
             )}
           </div>
-
-          {/* Shared connections */}
-          {data.sharedConnections.length > 0 && (
-            <div className="px-4 py-4">
-              <h4 className="text-[12px] font-medium text-zinc-400 uppercase tracking-wide mb-3">
-                Shared Connections ({data.sharedConnections.length})
-              </h4>
-              <div className="flex flex-wrap gap-1.5">
-                {data.sharedConnections.map((c) => (
-                  <Button
-                    key={c.id}
-                    variant="outline"
-                    className="h-7 text-[11px] px-2.5 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
-                    onClick={() => onSelectPerson?.(c.id)}
-                  >
-                    {c.name}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       )}
     </div>

@@ -1,0 +1,199 @@
+{
+  "label": "after",
+  "t": "2026-04-21T07:47:07.883Z",
+  "observations_by_kind": {
+    "correction": 1,
+    "interaction": 11762,
+    "merge": 13359,
+    "person": 4846
+  },
+  "observations_total": 29968,
+  "persons_total": 1602,
+  "person_observation_links_total": 29968,
+  "person_topics_total": 699,
+  "category_distribution": {
+    "other": 1047,
+    "fellow": 282,
+    "friend": 107,
+    "community": 90,
+    "founder": 31,
+    "sponsor": 22,
+    "team": 18,
+    "media": 5
+  },
+  "persons_without_person_obs": 0,
+  "neo4j_person_count": 1602,
+  "neo4j_edges_by_type": {
+    "DM": 135,
+    "EMAILED": 2,
+    "SHARED_GROUP": 1095
+  },
+  "umayr_samples": [
+    {
+      "person_id": "67050b91-5011-4ba6-b230-9a387879717a",
+      "observation_id": "6db7ea97-3521-428d-abd9-098865b429cc",
+      "observed_at": "2026-04-19T08:22:00.000Z",
+      "payload": {
+        "name": "Umayr Sheik",
+        "title": "Founder",
+        "emails": [
+          "usheik@sinxsolutions.ai",
+          "usheik@weddingdai.com",
+          "umayrsheik@gmail.com"
+        ],
+        "phones": [
+          "+971586783040"
+        ],
+        "company": "SinX Solutions",
+        "category": "friend",
+        "relationship_to_me": "Close friend and tech peer based in Dubai. One of the few people Sanchay considers a match for deep AI/ML discussions. Connected Feb 2025; became close quickly through regular WhatsApp DMs."
+      }
+    }
+  ],
+  "meet_samples": [
+    {
+      "person_id": "24e45dc3-9eb6-4b27-908b-d3a1ebca4cc8",
+      "observation_id": "b617d6ac-5d4a-4598-89f2-3b095a99b783",
+      "observed_at": "2026-04-20T11:14:32.889Z",
+      "payload": {
+        "name": "Meet",
+        "title": null,
+        "emails": [],
+        "phones": [
+          "+919820492346"
+        ],
+        "company": "Aakaar",
+        "category": "founder",
+        "relationship_to_me": "Meet (Kacha) is a close collaborator with whom Sanchay discusses reel/content production, onboarding contributors, and securing sponsors, particularly in the context of a project called 'Aakaar'; they share the 'aakaar general' WhatsApp group."
+      }
+    }
+  ],
+  "meet_topic_chips": [
+    {
+      "topic": "aakaar",
+      "weight": "1"
+    },
+    {
+      "topic": "flight booking",
+      "weight": "0.2597402597402597"
+    },
+    {
+      "topic": "pr",
+      "weight": "0.2597402597402597"
+    },
+    {
+      "topic": "impact india day",
+      "weight": "0.19480519480519481"
+    },
+    {
+      "topic": "workshops",
+      "weight": "0.1818181818181818"
+    },
+    {
+      "topic": "reels",
+      "weight": "0.1818181818181818"
+    },
+    {
+      "topic": "march meetup",
+      "weight": "0.1818181818181818"
+    },
+    {
+      "topic": "reel shoot",
+      "weight": "0.15584415584415584"
+    },
+    {
+      "topic": "atlas isdi",
+      "weight": "0.15584415584415584"
+    },
+    {
+      "topic": "event planning",
+      "weight": "0.15584415584415584"
+    },
+    {
+      "topic": "sponsorship",
+      "weight": "0.15584415584415584"
+    }
+  ],
+  "umayr_topic_chips": [
+    {
+      "topic": "jewelry crm",
+      "weight": "1"
+    },
+    {
+      "topic": "claude agents",
+      "weight": "1"
+    },
+    {
+      "topic": "iran",
+      "weight": "1"
+    },
+    {
+      "topic": "omran",
+      "weight": "1"
+    },
+    {
+      "topic": "jewelry",
+      "weight": "1"
+    },
+    {
+      "topic": "observability",
+      "weight": "1"
+    },
+    {
+      "topic": "agent ops",
+      "weight": "1"
+    },
+    {
+      "topic": "a2a protocol",
+      "weight": "0.8"
+    },
+    {
+      "topic": "short form content",
+      "weight": "0.8"
+    },
+    {
+      "topic": "jewelry ai",
+      "weight": "0.6"
+    },
+    {
+      "topic": "audience building",
+      "weight": "0.6"
+    },
+    {
+      "topic": "vc fundraising",
+      "weight": "0.6"
+    },
+    {
+      "topic": "coding agents",
+      "weight": "0.6"
+    },
+    {
+      "topic": "y combinator",
+      "weight": "0.6"
+    },
+    {
+      "topic": "dubai",
+      "weight": "0.55"
+    },
+    {
+      "topic": "car flood recovery",
+      "weight": "0.5"
+    },
+    {
+      "topic": "marketing assets",
+      "weight": "0.5"
+    },
+    {
+      "topic": "social media",
+      "weight": "0.5"
+    },
+    {
+      "topic": "landscaping",
+      "weight": "0.5"
+    },
+    {
+      "topic": "san francisco",
+      "weight": "0.5"
+    }
+  ]
+}

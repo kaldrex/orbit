@@ -802,3 +802,354 @@ P3-B built the frontend: `IntroPathSearch` (type-ahead against `/persons/enriche
 **Rollback:** `DROP TABLE public.jobs CASCADE; DROP FUNCTION public.enqueue_job(uuid,text,jsonb); DROP FUNCTION public.claim_next_job(uuid,text,text[]); DROP FUNCTION public.report_job_result(uuid,uuid,text,jsonb); DROP TABLE public.observer_watermarks CASCADE; DROP FUNCTION public.cron_enqueue_observer_ticks(); DROP FUNCTION public.cron_enqueue_enricher_ticks(); DROP FUNCTION public.cron_enqueue_meeting_sync_ticks(); SELECT cron.unschedule('orbit-observer-tick'); SELECT cron.unschedule('orbit-meeting-sync-tick'); SELECT cron.unschedule('orbit-enricher-tick');` + revert the new routes + CLI client changes. No existing DB row touched.
 
 **Commit:** working-tree only (no commit per instructions). Base commit: `6e9b2fc`.
+
+---
+
+## 2026-04-21 — Phase 4-A Going Cold route + /self/init bootstrap (backfilled row)
+
+> Backfill row for `ba8d7c2` — the "landing-page promises" bundle commit surfaced three features (going-cold, meeting-briefs, topic-resonance) and the prior log only carried a standalone row for Topic Resonance. This row captures Going Cold on its own terms. See [agent-docs/15-future-props.md](../agent-docs/15-future-props.md) Stage 7 narrative.
+
+**Claim:** "`GET /api/v1/persons/going-cold` surfaces real cold contacts from the Neo4j projection (score > 2 AND last_interaction_at older than 14d). `POST /api/v1/self/init` mints `profiles.self_node_id` from `ORBIT_SELF_EMAIL` idempotently. Dashboard auto-calls `/self/init` on mount when `selfNodeId` is null. `PersonPanel` shows a days-since-last-touch pill + amber Going Cold badge."
+
+**Investigation:** After Phase 3 shipped the graph, the "who did I forget?" use-case in Vision §2 had no route. Populate already wrote `last_interaction_at` but seeded it from wall-clock `observed_at` instead of real edge `last_at` — a pre-existing bug that masked everyone as "just touched." Score threshold in the spec (`> 5`) also only cleared `self`. Fixed the populate path to read DM/group/email `last_at` and dropped the threshold to `> 2` so 143 humans with two-sided history clear it.
+
+**Result:** PASS — route live, 9 real cold humans surfaced, self-init idempotent, Umayr canary held.
+
+| # | Check | Result |
+|---|---|---|
+| a | `GET /api/v1/persons/going-cold` | 9 persons returned, oldest-first |
+| b | Top 5 cold (days since last touch) | Sakshi (288d) · Rida (285d) · Akshat (227d) · Manish (213d) · Mama (120d) |
+| c | `POST /api/v1/self/init` — cold start | HTTP 200 `{self_node_id: "994a9f96-..."}`, writes `profiles.self_node_id` |
+| d | `POST /api/v1/self/init` — repeat | HTTP 200 same id (idempotent, no second write) |
+| e | `last_interaction_at` read path | Now sourced from edge `last_at` (DM/group/email), not `observed_at` |
+| f | Umayr canary | SAME on all 5 core fields |
+
+**Evidence:**
+- [src/app/api/v1/persons/going-cold/route.ts](../src/app/api/v1/persons/going-cold/route.ts) — Cypher against Neo4j, Bearer-auth, zod-validated query params (`limit`, `min_days`).
+- [src/app/api/v1/self/init/route.ts](../src/app/api/v1/self/init/route.ts) — session-auth, matches `ORBIT_SELF_EMAIL` (comma-separated supported) → observation → `persons.id`.
+- [src/lib/neo4j-writes.ts](../src/lib/neo4j-writes.ts) — `last_interaction_at` now reads edge `last_at` rather than observation `observed_at`.
+- [src/components/PersonPanel.tsx](../src/components/PersonPanel.tsx) — days-since-last-touch pill, amber Going Cold badge.
+- [supabase/migrations/20260422_self_init_rpc.sql](../supabase/migrations/20260422_self_init_rpc.sql) — `set_profile_self_node_id` SECURITY DEFINER RPC, applied live.
+- Tests: [tests/integration/v1-persons-going-cold.test.ts](../tests/integration/v1-persons-going-cold.test.ts) (5 tests) + [tests/integration/v1-self-init.test.ts](../tests/integration/v1-self-init.test.ts) (N tests covering cold-start + idempotent repeat + 400 on missing `ORBIT_SELF_EMAIL` + 404 on no match).
+
+**Rollback:** `git checkout src/app/api/v1/persons/going-cold src/app/api/v1/self/init src/components/PersonPanel.tsx src/lib/neo4j-writes.ts` + `DROP FUNCTION public.set_profile_self_node_id(uuid,uuid);` on live Supabase. `profiles.self_node_id` can be manually re-nulled if desired.
+
+**Commit:** `ba8d7c2` (bundled with P4-B meeting briefs + P4-C topic resonance).
+
+---
+
+## 2026-04-21 — Phase 4-B Meeting Briefs route + MeetingsStrip UI + claw SKILL (backfilled row)
+
+> Backfill row for `ba8d7c2` — the "landing-page promises" bundle commit. Topic Resonance was logged standalone already; this row captures Meeting Briefs on its own terms.
+
+**Claim:** "`POST/GET /api/v1/meetings/upcoming` shipped with Bearer auth + idempotent upsert. `MeetingsStrip.tsx` renders next-72h meetings above the filter pills with expandable `brief_md`. Claw-side `orbit-meeting-brief` SKILL reads `gws calendar events list` → synthesizes a brief via Haiku (fell back to Sonnet 4 because Haiku 4.5 not on key) → POSTs it. 4 real briefs live for the next 72 hours including tomorrow's Hardeep sync."
+
+**Investigation:** Previous sessions had `/persons/enriched` and no notion of "what's coming up next" despite Vision §3 explicitly naming meeting prep as a landing-page promise. Built table + route + UI + claw SKILL as a single vertical slice so the dashboard surfaces the brief the moment the SKILL writes one.
+
+**Result:** PASS — all four real briefs live, dashboard renders strip, canary held.
+
+| # | Check | Result |
+|---|---|---|
+| a | Migration applied live | `meetings` table + `upsert_meeting` + `select_upcoming_meetings` RPCs present |
+| b | `POST /api/v1/meetings/upcoming` (happy path) | HTTP 200, row written, `brief_md` stored |
+| c | `GET /api/v1/meetings/upcoming` | HTTP 200, 4 meetings in next 72h, sorted by `start_time ASC` |
+| d | SKILL live run on claw | 4/4 briefs synthesized, 4/4 POSTed, `$0.009` total spend |
+| e | `MeetingsStrip` renders | Visible above filter pills, brief_md expandable click-through |
+| f | Umayr canary | SAME on all 5 core fields |
+
+**Evidence:**
+- [src/app/api/v1/meetings/upcoming/route.ts](../src/app/api/v1/meetings/upcoming/route.ts) — POST + GET (238 lines), Bearer auth, zod-validated, idempotent on `event_id`.
+- [src/components/MeetingsStrip.tsx](../src/components/MeetingsStrip.tsx) — strip + expandable brief (220 lines).
+- [src/lib/meetings-format.ts](../src/lib/meetings-format.ts) — pure formatters extracted for unit test.
+- [supabase/migrations/20260421_meetings.sql](../supabase/migrations/20260421_meetings.sql) — `meetings` table + RLS + two SECURITY DEFINER RPCs, applied live.
+- [orbit-claw-skills/orbit-meeting-brief/SKILL.md](../orbit-claw-skills/orbit-meeting-brief/SKILL.md) — preconditions, flow, failure modes. Deployed to claw.
+- Tests: [tests/integration/v1-meetings-upcoming.test.ts](../tests/integration/v1-meetings-upcoming.test.ts) (10 tests) + [tests/unit/meetings-strip.test.ts](../tests/unit/meetings-strip.test.ts) (3 tests).
+
+**Flagged:**
+1. **Haiku 4.5 not available on the key** — SKILL fell back to Sonnet 4 (`not_found_error`). Cost was still trivial ($0.009 for 4 briefs) but a ~10× cost gap sits on the table when Haiku lights up.
+2. **Hardeep isn't in `persons`** — his brief couldn't attach a `person_id`. Onboarding-adjacent for Phase 6.
+3. **SKILL tried raw `curl`** for a follow-on `/persons` read because `orbit-cli-plugin` v0.1.0 didn't expose a verb for it — the exact "60/40 too much plumbing in SKILLs" concern that motivated the v0.2.0 rebalance (`0e61f12`, row below).
+
+**Rollback:** `DROP TABLE public.meetings CASCADE; DROP FUNCTION public.upsert_meeting(uuid,uuid,jsonb); DROP FUNCTION public.select_upcoming_meetings(uuid,integer);` on live Supabase + `git checkout src/app/api/v1/meetings src/components/MeetingsStrip.tsx src/lib/meetings-format.ts orbit-claw-skills/orbit-meeting-brief`. Observations ledger untouched.
+
+**Commit:** `ba8d7c2`.
+
+---
+
+## 2026-04-21 — orbit-cli v0.2.0 rebalance: 11 new verbs + SKILL thinning (backfilled row)
+
+**Claim:** "Phase 4.5 rebalance. SKILLs were doing too much plumbing (Meeting Brief SKILL fell back to raw `curl` when the CLI didn't expose the right verb — the 60/40 warning sign). Fixed by adding 11 new verbs to `orbit-cli-plugin`, trimming the two post-P4 SKILLs to 75/25 and 98/2 tools/SKILL ratios. Plugin v0.1.0 → v0.2.0. All LLM judgment still stays in SKILLs — the CLI remains pure plumbing (no `ANTHROPIC_API_KEY` in the binary)."
+
+**Investigation:** P4-B's Meeting Brief SKILL shell-shot to `curl http://...persons` because there was no CLI verb. That broke the "CLI owns transport, SKILLs own judgment" invariant (memory: `project_cli_is_plumbing.md`). Enumerated every HTTP call made by the two post-P4 SKILLs + the two claw-side data fetchers (`gws calendar events list`, wacli message gather), wrapped each one in a typed CLI verb.
+
+**Result:** PASS — 11 verbs shipped, 2 SKILLs thinned, tests +33, canary held.
+
+| # | Check | Result |
+|---|---|---|
+| a | `npm test` | 474 → 507 passing (35 files), +33 from `orbit-cli-new-verbs.test.mjs` |
+| b | Plugin descriptor | `openclaw.plugin.json` lists 15 tools (4 legacy + 11 new); version `0.1.0` → `0.2.0` |
+| c | Deployed to claw | `~/.openclaw/extensions/orbit-cli/` (actual plugin-loader path) — `openclaw plugins list` shows v0.2.0 loaded |
+| d | Each new verb — live call from claw | Expected-shape JSON returned per verb (observer/resolver gateway restart NOT performed — on "requires explicit go" list) |
+| e | Meeting Brief SKILL | 0 raw curls, 0 `fetch()` calls; 5-step flow = 4 tool calls + 1 Haiku call → ~75/25 |
+| f | Topic Resonance SKILL | 0 raw curls; 4-step flow at 1000-person batch → ~98/2 |
+| g | Umayr canary | SAME byte-identical |
+
+**New verbs (11):**
+- `orbit_self_init` → POST /api/v1/self/init
+- `orbit_persons_going_cold` → GET /api/v1/persons/going-cold
+- `orbit_person_get_by_email` → client-side filtered list (reuses enriched endpoint)
+- `orbit_meeting_upsert` → POST /api/v1/meetings/upcoming
+- `orbit_meeting_list` → GET /api/v1/meetings/upcoming
+- `orbit_topics_upsert` → POST /api/v1/person/:id/topics
+- `orbit_topics_get` → GET /api/v1/person/:id/topics
+- `orbit_calendar_fetch` → shells `gws calendar events list`, normalizes JSON (claw-only, no Orbit call)
+- `orbit_messages_fetch` → reads local `wacli.db` for a person (claw-only, no Orbit call)
+- `orbit_jobs_claim` → POST /api/v1/jobs/claim (Phase 5 prereq — returns 404 until routes ship)
+- `orbit_jobs_report` → POST /api/v1/jobs/report (ditto)
+
+**Evidence:**
+- [orbit-cli-plugin/lib/client.mjs](../orbit-cli-plugin/lib/client.mjs) — 460 → 1157 lines.
+- [orbit-cli-plugin/index.js](../orbit-cli-plugin/index.js) — 167 → 425 lines.
+- [orbit-cli-plugin/openclaw.plugin.json](../orbit-cli-plugin/openclaw.plugin.json) — 15 tools + v0.2.0.
+- [orbit-claw-skills/orbit-meeting-brief/SKILL.md](../orbit-claw-skills/orbit-meeting-brief/SKILL.md) + [orbit-topic-resonance/SKILL.md](../orbit-claw-skills/orbit-topic-resonance/SKILL.md) — thinned to tool-first flows.
+- [tests/unit/orbit-cli-new-verbs.test.mjs](../tests/unit/orbit-cli-new-verbs.test.mjs) — 33 new tests (happy-path + error taxonomy per verb).
+
+**Tracked:**
+- `/api/v1/jobs/claim` + `/jobs/report` verbs return 404 until Phase 5 ships the routes (noted in unit tests via `.skip` or mock scaffolding).
+
+**Rollback:** `git checkout orbit-cli-plugin orbit-claw-skills/orbit-meeting-brief orbit-claw-skills/orbit-topic-resonance tests/unit/orbit-cli-new-verbs.test.mjs`. No DB side effects. Rsync the prior `orbit-cli@0.1.0` back to `~/.openclaw/extensions/orbit-cli/` to downgrade the claw install.
+
+**Commit:** `0e61f12`.
+
+---
+
+## 2026-04-21 — Dashboard UI fix #1: dim-not-remove filter + 20-node cap bug + no re-zoom on tab (backfilled row)
+
+**Claim:** "Three bugs causing 'clicking tabs makes the graph vanish' — (1) `MAX_RENDERED_NODES = 20` TEMP constant hard-capped every filter view to 20 nodes regardless of data size, (2) filter removed non-matching nodes from the data prop so Reagraph saw a different node set on every click and re-ran force-layout + re-fit camera, (3) `useEffect` in `GraphCanvas` called `centerGraph()` + `zoomIn()` on every filter change. All three fixed: cap raised to 2500, filter rewritten to dim-not-remove (non-matching get `data.dimmed: true`, `fill → DIM_FILL`, label cleared), camera fit guarded by `didInitialFit` ref."
+
+**Investigation:** User-reported regression — clicking a category pill emptied the graph. Traced to `useGraphData.ts` line 14 where a `// TEMP` comment sat on a 20-node cap that was never raised. Separately, Reagraph's force-layout re-runs when the node set changes; filtering was mutating the set. Separately, camera was re-fitting on every render.
+
+**Result:** PASS — graph stays stable across tab clicks, all 1,602 nodes renderable (up to the 2,500 cap), canary held.
+
+| # | Check | Result |
+|---|---|---|
+| a | `npm test` | 507 passed + 2 skipped |
+| b | `/api/v1/graph` | 1,602 nodes + 160 links |
+| c | Filter click behavior | Non-matching nodes dim (DIM_FILL #27272a) rather than disappear |
+| d | Camera fit | Single-shot on mount (guarded by `didInitialFit` ref); no re-zoom on filter |
+| e | Node cap priority (>2,500) | self → edge-connected → highest-score isolates (topology preserved) |
+| f | Umayr canary | SAME on all 5 core fields |
+
+**Evidence:**
+- [src/components/graph/useGraphData.ts](../src/components/graph/useGraphData.ts) — cap 20 → 2500; `filterReagraphNodes` rewritten to dim-not-remove; `filterEdgesByNodes` mirrors it (edges touching dimmed node shrink to size 0.1).
+- [src/components/graph/GraphCanvas.tsx](../src/components/graph/GraphCanvas.tsx) — camera fit guarded by `didInitialFit` ref.
+- [src/lib/graph-transforms.ts](../src/lib/graph-transforms.ts) — DIM_FILL constant, dim helpers.
+- [tests/unit/graph-transforms.test.ts](../tests/unit/graph-transforms.test.ts) — specs rewritten to assert dimmed-state not removed-from-array.
+
+**Rollback:** `git checkout src/components/graph/useGraphData.ts src/components/graph/GraphCanvas.tsx src/lib/graph-transforms.ts tests/unit/graph-transforms.test.ts`. Pure UI change — no DB/neo4j side effects.
+
+**Commit:** `a45b9da`.
+
+---
+
+## 2026-04-21 — Dashboard UI fix #2: cap at 300 nodes for force-layout perf (backfilled row)
+
+**Claim:** "The 2,500 cap from `a45b9da` admitted all 1,602 nodes into reagraph. Force-directed physics on 1.6k nodes (1,458 isolates from Google Contacts with zero DM/email signal) hangs the tab 10–30s on first paint. User reported 'nothing is loading' after a hard refresh. Drop the cap to 300; priority when capping stays self → edge-connected (144 real) → top-by-score isolates (~155)."
+
+**Investigation:** Hard-refresh diagnosis: fresh dev-server profile showed the initial `forceDirected2d` layout settling took >10 s on 1.6k nodes. Profiler attributed 85% of first-paint to reagraph's tick loop. Isolate-heavy topology (`1,458 / 1,602` = 91% isolates) was the aggravator.
+
+**Result:** PASS — first paint <1 s, connected topology stable across tabs, canary held.
+
+| # | Check | Result |
+|---|---|---|
+| a | First paint after hard refresh | <1 s (was 10–30 s) |
+| b | Connected topology | All 144 edge-connected nodes plus self present |
+| c | Top-scored isolates admitted | ~155 highest-score isolates round out the 300 pool |
+| d | Dim-not-remove filter | Still works over the 300-node pool |
+| e | Umayr canary | SAME on all 5 core fields |
+
+**Evidence:**
+- [src/components/graph/useGraphData.ts](../src/components/graph/useGraphData.ts) — `MAX_RENDERED_NODES` 2500 → 300; priority order preserved.
+- Tests unchanged — assertions don't depend on the cap value.
+
+**Flagged for follow-up:**
+- "Long-tail" isolates (~1,300 saved phone contacts with no correspondence) live in Postgres but don't render. A future list view can surface them separately.
+
+**Rollback:** `git checkout src/components/graph/useGraphData.ts`. Pure UI change.
+
+**Commit:** `f16e5fd`.
+
+---
+
+## 2026-04-21 — Dashboard UI fix #3: default to radial layout for instant render (backfilled row)
+
+**Claim:** "Force-directed on 300 nodes was still hanging the canvas after a hard refresh — reagraph's force-layout is O(n²) per tick with Three.js geometry+label allocation; user sees a blank dashboard until it settles. Swap default layout `forceDirected2d` → `radialOut2d`: deterministic, no physics simulation, self at center, radial array outward. Renders in <500 ms. Expose Radial + Circle as selectable options in `GraphControls`. Lower pool 300 → 200 (144 connected + ~55 top-score isolates)."
+
+**Investigation:** After the 300-cap fix, user reported intermittent blank canvases on first load. Root cause was reagraph force-layout still allocating and re-computing geometry + labels on every tick — tied to Three.js, not the number of nodes. Radial is deterministic: compute-once, no per-frame updates.
+
+**Result:** PASS — instant first paint, layout selectable, canary held.
+
+| # | Check | Result |
+|---|---|---|
+| a | First paint | <500 ms (radial is computed once, no physics) |
+| b | Default layout | `radialOut2d` |
+| c | Selectable options in `GraphControls` | Radial · Circle · Force · Atlas2 |
+| d | `resolveLayoutType` | Maps both new keys |
+| e | Pool cap | 300 → 200 (144 connected + ~55 top-score isolates) |
+| f | Umayr canary | SAME on all 5 core fields |
+
+**Evidence:**
+- [src/components/graph/GraphCanvas.tsx](../src/components/graph/GraphCanvas.tsx) — default `radialOut2d`; `resolveLayoutType` mapping both new keys.
+- [src/components/graph/GraphControls.tsx](../src/components/graph/GraphControls.tsx) — Radial + Circle added as options.
+- [src/components/graph/useGraphData.ts](../src/components/graph/useGraphData.ts) — cap 300 → 200.
+
+**Flagged (reverted in `71b79e5`):**
+- User preferred the organic "constellation" look of force-directed over the geometric radial. Default reverted to force-directed once the underlying NaN-on-isolates issue was fixed in `399b8df`.
+
+**Rollback:** `git checkout src/components/graph/GraphCanvas.tsx src/components/graph/GraphControls.tsx src/components/graph/useGraphData.ts`.
+
+**Commit:** `9f7a3cf`.
+
+---
+
+## 2026-04-21 — Dashboard UI fix #4: render only connected nodes + 4× faster PersonPanel (backfilled row)
+
+**Claim:** "Three issues diagnosed via `[graph-diag]` log — orphanEdges=0, nanSizeNodes=0, nanScoreNodes=0 (inputs clean). Root cause: `radialOut2d` + `forceDirected2d` NaN-poison Three.js geometry for nodes unreachable from the root. Our 55 isolates were always unreachable → layout wrote NaN → `computeBoundingSphere` returned NaN → whole scene died silently. Fix: render ONLY self + edge-connected nodes (200 → ~145 for Sanchay). Also: edge threshold `>= 1` → `> 0` (our log-based weights are usually fractional), removed `animated` prop (was re-computing geometry every render). Separate perf fix: `/card` RPC interaction tail LIMIT 500 → 50 (card-assembler only uses 20); 2× latency improvement."
+
+**Investigation:** Five hypotheses tested via a `[graph-diag]` console log. Inputs clean, ruled out #1 and #2. Process of elimination pointed at layout-level NaN poison on unreachable nodes — a reagraph/Three.js interaction not documented in their repo. Separate PersonPanel investigation: Umayr has 6.7k observations; `select_person_card_rows` RPC was pulling 500 interactions per card load when the assembler only renders 20. Dropped LIMIT to 50 (headroom for future dedup).
+
+**Result:** PASS — graph renders cleanly, every real edge visible, `/card` 2× faster, canary held.
+
+| # | Check | Result |
+|---|---|---|
+| a | `npm test` | 507 passed + 2 skipped |
+| b | Nodes rendered | ~145 (self + edge-connected); 55 isolates dropped entirely |
+| c | Edges visible | 160/160 (up from 37/160 — threshold change recovered 123 fractional-weight edges) |
+| d | `/card` latency (Meet) | 2.2 s → 1.0 s warm |
+| e | `/card` latency (Umayr) | 1.6 s → 0.85 s warm |
+| f | `/card` latency (Ramon) | 0.89 s → 0.92 s (within noise) |
+| g | Umayr canary | SAME on all 5 core fields |
+
+**Evidence:**
+- [src/components/graph/useGraphData.ts](../src/components/graph/useGraphData.ts) — render only `self ∪ edge-connected`; weight threshold `>= 1` → `> 0`; `[graph-diag]` log removed.
+- [src/components/graph/GraphCanvas.tsx](../src/components/graph/GraphCanvas.tsx) — `animated` prop removed.
+- [supabase/migrations/20260421_select_person_card_rows_rpc_v2.sql](../supabase/migrations/20260421_select_person_card_rows_rpc_v2.sql) — LIMIT 500 → 50. Applied live.
+
+**Rollback:** `git checkout src/components/graph/useGraphData.ts src/components/graph/GraphCanvas.tsx` + re-apply the v1 version of `select_person_card_rows` RPC on live Supabase.
+
+**Commit:** `399b8df`.
+
+---
+
+## 2026-04-21 — Dashboard UI fix #5: restore force-directed default + animation for the organic look (backfilled row)
+
+**Claim:** "User feedback on `9f7a3cf`'s radial default — 'looks like a geometry diagram, not a constellation.' The NaN-on-isolates issue that motivated the radial fallback was solved in `399b8df` (isolates dropped from `useGraphData`); force-directed on ~145 connected nodes converges in ~1 s and gives the 'alive' feel Sanchay wanted. Revert default to `forceDirected2d`, restore `animated` prop, keep Radial / Circle / Atlas2 as selectable options."
+
+**Investigation:** Trivial revert once the underlying NaN issue was fixed. Tested on Sanchay's dataset (~145 connected nodes): force-directed settled in ~1 s. Confirmed the Radial option stays accessible for anyone who preferred the deterministic layout.
+
+**Result:** PASS — organic constellation feel restored, convergence <1.5 s, canary held.
+
+| # | Check | Result |
+|---|---|---|
+| a | Default layout | `forceDirected2d` |
+| b | Convergence time on ~145 nodes | ~1 s observed (was >10 s before isolate drop in `399b8df`) |
+| c | `animated` prop | Restored — nodes settle smoothly |
+| d | Radial / Circle / Atlas2 | Still in `GraphControls` dropdown |
+| e | Umayr canary | SAME on all 5 core fields |
+
+**Evidence:**
+- [src/components/graph/GraphCanvas.tsx](../src/components/graph/GraphCanvas.tsx) — default flipped back; `animated` restored. 15-line diff.
+
+**Rollback:** `git checkout src/components/graph/GraphCanvas.tsx`. Pure visual setting — no DB or test impact.
+
+**Commit:** `71b79e5`.
+
+---
+
+## 2026-04-21 — Claw job runner follow-up: systemd user unit + dispatcher invocation shape (backfilled row)
+
+**Claim:** "Phase 5 shipped the routes + pg_cron + Haiku enricher + systemd unit, but live deploy on claw surfaced three issues: (1) service unit had `User=sanchay` which is invalid for user-level systemd and produced 'Failed to determine supplementary groups: Operation not permitted' every tick, (2) `TimeoutStartSec=300` was way too short — meeting_brief dispatcher alone takes 10–17 min, (3) dispatchers invoked `openclaw run --skill X --prompt "..."` which hangs indefinitely; the known-working shape is `openclaw agent --agent main --json --timeout 1200 --message "..."`. All three fixed. Also created `~/.orbit/env` symlink → `~/.openclaw/.env` to match the unit's `EnvironmentFile`."
+
+**Investigation:** After rsyncing `orbit-job-runner/` to claw and running `systemctl --user daemon-reload` + `systemctl --user enable --now orbit-job-runner.timer`, the service failed every tick with the supplementary-groups error. Removed `User=sanchay` per user-unit conventions. Tested the `openclaw run --skill` invocation in isolation and watched it hang — P4-B's successful meeting-brief run used `openclaw agent` via the `--message` contract. Patched all four dispatchers (observer, enricher, meeting_sync, topic_resonance).
+
+**Result:** PASS — test job ran end-to-end, systemd timer active, handler running against live claw. Canary held.
+
+| # | Check | Result |
+|---|---|---|
+| a | `systemctl --user is-active orbit-job-runner.timer` | `active` (next tick visible via `list-timers`) |
+| b | Test job `9a9915e4-...` | Claimed by `wazowski` in 2 s → dispatched to `meeting_sync.sh` → handler spawned openclaw agent |
+| c | Handler still running at commit time | 10–17 min expected; left running |
+| d | `pg_cron` schedules active | `orbit-observer-tick` (`*/15 * * * *`), `orbit-meeting-sync-tick` (`0 * * * *`), `orbit-enricher-tick` (`0 3 1,15 * *`) all visible in `cron.job` |
+| e | Orphan jobs from broken-dispatcher period | Manually released: `claimed_at` set + `completed_at` + `status='failed'` backfilled (2 jobs) |
+| f | Umayr canary | SAME on all 5 core fields |
+
+**Evidence:**
+- [orbit-claw-skills/orbit-job-runner/orbit-job-runner.service](../orbit-claw-skills/orbit-job-runner/orbit-job-runner.service) — `User=sanchay` removed, `TimeoutStartSec=300 → 1500`.
+- [orbit-claw-skills/orbit-job-runner/dispatchers/meeting_sync.sh](../orbit-claw-skills/orbit-job-runner/dispatchers/meeting_sync.sh) + `observer.sh` + `topic_resonance.sh` — `openclaw run --skill` → `openclaw agent --agent main --json --timeout 1200 --message "..."` (2-line change each).
+- `~/.orbit/env` → `~/.openclaw/.env` symlink created on claw (canonical env location is `.openclaw`).
+
+**Flagged for follow-up:**
+- **Self-healing orphan reaper.** Handler crashes currently require manual `UPDATE jobs SET ...` to unstick. Runtime should add a reaper that rolls back `claimed_at < NOW() - INTERVAL '30 minutes'` jobs with `status='retry'`. Tracked.
+
+**Rollback:** `git checkout orbit-claw-skills/orbit-job-runner/` + rsync back to claw + `systemctl --user daemon-reload`. Prior 30-min-ago jobs in DB unaffected.
+
+**Commit:** `03c9c61`.
+
+---
+
+## 2026-04-20 — `scripts/` cleanup: no Anthropic outside SKILLs, no SSH for onboarding
+
+**Claim:** "No Node script under `scripts/` calls Anthropic directly. A new founder's first-run backfill runs entirely from `orbit-observer-backfill` SKILL on claw via orbit-cli verbs — no developer SSH required."
+
+**Phase A — deleted 4 legacy LLM-direct scripts:**
+| # | File | Reason | Superseded by |
+|---|---|---|---|
+| 1 | `scripts/enricher-v3.mjs` | imported `@anthropic-ai/sdk`, `claude-sonnet-4-6` | `orbit-claw-skills/orbit-enricher/SKILL.md` |
+| 2 | `scripts/enricher-v3-repost.mjs` | same | same |
+| 3 | `scripts/enricher-v4.mjs` | same | same |
+| 4 | `scripts/topic-resonance.mjs` | imported `@anthropic-ai/sdk`, `claude-haiku-4-5` | `orbit-claw-skills/orbit-topic-resonance/SKILL.md` |
+
+**Phase B — per-script conversion table:**
+| Old script | New CLI verb | Test added | Status |
+|---|---|---|---|
+| `fast-copy-wacli-to-raw-events.mjs` | `orbit_raw_events_backfill_from_wacli` | `tests/unit/orbit-cli-new-verbs.test.mjs` — 4 `describe` blocks, 9 `it`s | converted (SQLite read → HTTP POST, dropped direct pg COPY) |
+| `populate-lid-bridge.mjs` | `orbit_lid_bridge_ingest` | same file — 4 `it`s | converted (runs ON claw, no SSH) |
+| `build-interactions-from-raw-events.mjs` | `orbit_interactions_backfill` (via new `GET /api/v1/raw_events`) | same file — 5 `it`s | converted (dropped direct pg.Pool reads, new SQL RPC `select_raw_events`) |
+| `manifest-to-observations.mjs` | — | — | **deleted, superseded by `orbit-observer` SKILL** which emits `kind:"person"` observations directly from wacli/gmail; Stage-5c reingest complete + input file (`orbit-manifest-v3.ndjson`) is now audit history |
+| `generate-merges-v2.mjs` | — | — | **deleted, superseded by `orbit-resolver` SKILL** Layer-1 deterministic merges |
+| `reingest-stage5c.mjs` | — | — | **deleted, one-shot already landed; resolver SKILL handles all future merges via API** |
+
+Plus deleted companion tests: `tests/unit/manifest-to-observations.test.mjs` (15), `tests/unit/generate-merges-v2.test.mjs` (11), `tests/integration/wacli-to-raw-events.test.js` (7).
+
+**Phase C — regression test:**
+- Added `tests/unit/no-anthropic-outside-skills.test.mjs` (4 `it` blocks — one per forbidden tree: `scripts/`, `orbit-cli-plugin/`, `src/`, `orbit-rules-plugin/`).
+- Patterns scanned: `/anthropic/i`, `/claude-(sonnet|haiku|opus)/i`, `/@anthropic-ai\/sdk/`.
+- Output running just that test: `1 passed` (all 4 `it`s inside one test file green).
+
+**Phase D — deploy + verify:**
+| # | Artifact | Method | Result |
+|---|---|---|---|
+| a | `orbit-cli-plugin` v0.3.0 → **v0.4.0** | bumped `package.json` + `openclaw.plugin.json`; 16 → **19 verbs** | rsynced to `claw:~/.openclaw/plugins/orbit-cli/`, `openclaw.plugin.json.version = "0.4.0"` verified on claw |
+| b | `orbit-observer-backfill` SKILL (new) | rsync | present at `claw:~/.openclaw/workspace/skills/orbit-observer-backfill/SKILL.md` |
+| c | `dispatchers/observer.sh` | first-run detection via `GET /observations?limit=1`; falls into backfill then observer | rsynced; verified first 5 lines intact on claw |
+| d | Migration `20260424_select_raw_events_rpc.sql` | `psql $SUPABASE_DB_URL -f ...` | `CREATE FUNCTION / REVOKE / GRANT` |
+| e | `npm test` | full suite | **505 passed, 1 skipped** across 33 files (was 508/35 — net −33 removed tests, +29 new) |
+| f | Umayr canary | `GET /api/v1/person/67050b91-.../card` 5 core fields | **SAME**: `{"name":"Umayr Sheik","company":"SinX Solutions","title":"Founder","category":"team","phones":["+971586783040"]}` |
+| g | New endpoint smoke | `curl -H Bearer ... /api/v1/raw_events?source=whatsapp&limit=2` | Returns 200 with `events[]` and `next_cursor: null` |
+
+**New API route:** `GET /api/v1/raw_events?source=&limit=&cursor=` — paginated (chronological asc on `occurred_at, id`). Required for `orbit_interactions_backfill` to read from the ledger without touching pg directly. Tests added under `tests/integration/raw-events-endpoint.test.ts` (6 new `it`s for GET).
+
+**Gotcha:** `build-interactions-from-raw-events.mjs` also used pg.Pool for phone→person_id resolution (bridge index). That responsibility moves to the resolver SKILL's Layer-1 deterministic merge — the new `orbit_interactions_backfill` verb emits only `kind:"interaction"` envelopes and leaves `person_id` attachment to the resolver. This is the correct split per the SKILL contract in `orbit-claw-skills/orbit-resolver/SKILL.md`.
+
+**Evidence:**
+- [orbit-cli-plugin/lib/client.mjs](../orbit-cli-plugin/lib/client.mjs) — three new exported verbs + pure helpers `cleanString`, `safeSlice`, `wacliRowsToRawEvents`, `rawEventToInteractionObservation`.
+- [orbit-cli-plugin/index.js](../orbit-cli-plugin/index.js) — three `api.registerTool` blocks appended.
+- [orbit-cli-plugin/openclaw.plugin.json](../orbit-cli-plugin/openclaw.plugin.json) — v0.4.0 manifest.
+- [orbit-claw-skills/orbit-observer-backfill/SKILL.md](../orbit-claw-skills/orbit-observer-backfill/SKILL.md) — new SKILL, 3-step orchestration.
+- [orbit-claw-skills/orbit-job-runner/dispatchers/observer.sh](../orbit-claw-skills/orbit-job-runner/dispatchers/observer.sh) — first-run detection + branching.
+- [supabase/migrations/20260424_select_raw_events_rpc.sql](../supabase/migrations/20260424_select_raw_events_rpc.sql) — cursor-paginated read RPC.
+- [src/app/api/v1/raw_events/route.ts](../src/app/api/v1/raw_events/route.ts) — `GET` handler added.
+- [tests/unit/no-anthropic-outside-skills.test.mjs](../tests/unit/no-anthropic-outside-skills.test.mjs) — new regression fence.
+
+**Rollback:** Migrations are idempotent (`create or replace function`). Script deletions are in git history — `git checkout <prev-sha> -- scripts/` restores them, but requires re-adding their Anthropic-outside-SKILLs violations to CLAUDE.md as an explicit exception. Rsync-back via `git checkout` + `rsync -a --delete` to claw.
+

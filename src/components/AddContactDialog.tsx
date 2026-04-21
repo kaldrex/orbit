@@ -239,7 +239,13 @@ export default function AddContactDialog({ open, onClose, onAdded }: AddContactD
       <div className="relative w-full max-w-md rounded-xl border border-zinc-800/60 bg-[#0c0c10] p-6 shadow-2xl">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-[15px] font-semibold text-zinc-100">Add Contacts</h2>
-          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 text-lg">&times;</button>
+          <button
+            onClick={onClose}
+            aria-label="Close add contacts dialog"
+            className="text-zinc-500 hover:text-zinc-300 text-lg"
+          >
+            &times;
+          </button>
         </div>
 
         {/* Mode toggle */}
@@ -265,23 +271,26 @@ export default function AddContactDialog({ open, onClose, onAdded }: AddContactD
         {mode === "single" ? (
           <form onSubmit={handleAddSingle} className="space-y-3">
             <div className="space-y-1">
-              <Label className="text-[11px] text-zinc-400">Name *</Label>
+              <Label htmlFor="add-contact-name" className="text-[11px] text-zinc-400">Name *</Label>
               <Input
+                id="add-contact-name"
                 value={name} onChange={(e) => setName(e.target.value)} required placeholder="Jane Doe"
                 className="h-9 bg-zinc-900/50 border-zinc-800 text-zinc-100 placeholder:text-zinc-600 text-[13px] rounded-lg"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-[11px] text-zinc-400">Company</Label>
+                <Label htmlFor="add-contact-company" className="text-[11px] text-zinc-400">Company</Label>
                 <Input
+                  id="add-contact-company"
                   value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Acme Inc"
                   className="h-9 bg-zinc-900/50 border-zinc-800 text-zinc-100 placeholder:text-zinc-600 text-[13px] rounded-lg"
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-[11px] text-zinc-400">Category</Label>
+                <Label htmlFor="add-contact-category" className="text-[11px] text-zinc-400">Category</Label>
                 <select
+                  id="add-contact-category"
                   value={category} onChange={(e) => setCategory(e.target.value)}
                   className="h-9 w-full rounded-lg border border-zinc-800 bg-zinc-900/50 px-2 text-[13px] text-zinc-100"
                 >
@@ -292,8 +301,9 @@ export default function AddContactDialog({ open, onClose, onAdded }: AddContactD
               </div>
             </div>
             <div className="space-y-1">
-              <Label className="text-[11px] text-zinc-400">Email</Label>
+              <Label htmlFor="add-contact-email" className="text-[11px] text-zinc-400">Email</Label>
               <Input
+                id="add-contact-email"
                 value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="jane@acme.com"
                 className="h-9 bg-zinc-900/50 border-zinc-800 text-zinc-100 placeholder:text-zinc-600 text-[13px] rounded-lg"
               />

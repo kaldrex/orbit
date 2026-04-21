@@ -1,0 +1,67 @@
+{
+  "promoted_count": 8,
+  "stayed_other_count": 192,
+  "sample_promoted": [
+    {
+      "person_id": "0feaacb9-71b3-4e8a-8e23-f9d2c8ee2e94",
+      "name": "Lakshmi",
+      "prev_category": "other",
+      "new_category": "sponsor",
+      "company": "fn7.io",
+      "title": null,
+      "relationship_to_me": "Recruiter or talent scout from fn7.io who reached out to Sanchay as a promising full-stack engineer.",
+      "confidence": null,
+      "reasoning": "Email from fn7.io domain with subject 'Build the next billion-dollar AI platform' and snippet targeting full-stack engineers — clear talent acquisition outreach."
+    },
+    {
+      "person_id": "29a48de8-adfb-45ff-8e92-f890bb0b645f",
+      "name": "Chris McCreery",
+      "prev_category": "other",
+      "new_category": "sponsor",
+      "company": null,
+      "title": "Digital Expert & Measurement and Performance",
+      "relationship_to_me": "Digital expert and measurement consultant; booked consultation with Sanchay via Fiverr for tracking implementation work.",
+      "confidence": null,
+      "reasoning": "Email threads show consultation appointments booked via Fiverr, discussion of tracking implementation with third parties (Ramon), and title signature 'Digital Expert & Measurement and Performance' — indicates service provider/sponsor relationship."
+    },
+    {
+      "person_id": "1b8cfc63-2cfb-47c5-b74e-32029895048f",
+      "name": "V",
+      "prev_category": "other",
+      "new_category": "friend",
+      "company": null,
+      "title": null,
+      "relationship_to_me": "Saved contact with single-letter nickname; personal contact suggesting close familiarity.",
+      "confidence": null,
+      "reasoning": "Contact saved as 'V' (single letter) indicates personal relationship with informal naming convention; no professional activity recorded."
+    }
+  ],
+  "umayr_diff": {
+    "category": {
+      "before": "friend",
+      "after": "friend",
+      "changed": false
+    },
+    "name": {
+      "before": "Umayr Sheik",
+      "after": "Umayr Sheik",
+      "changed": false
+    },
+    "company": {
+      "before": "SinX Solutions",
+      "after": "SinX Solutions",
+      "changed": false
+    },
+    "title": {
+      "before": "Founder",
+      "after": "Founder",
+      "changed": false
+    },
+    "relationship_to_me": {
+      "before": "Close friend and tech peer based in Dubai. One of the few people Sanchay considers a match for deep AI/ML discussions. Connected Feb 2025; became close quickly through regular WhatsApp DMs.",
+      "after": "Close friend and tech peer based in Dubai. One of the few people Sanchay considers a match for deep AI/ML discussions. Connected Feb 2025; became close quickly through regular WhatsApp DMs.",
+      "changed": false
+    }
+  },
+  "umayr_canary_passed": true
+}

@@ -20,7 +20,7 @@ Shipped in `orbit-rules-plugin/`, applied at every manifest generation and every
 - Phone-as-name, email-as-name, empty name rejection
 - Generic first-name guard (blocks single-token collisions on common names)
 
-Changes require a plugin redeploy + tests. Today: 329 tests green across 19 files (the rule-plugin sub-suite includes `orbit-rules-plugin.test.mjs`, `...-safety.test.mjs`, `...-name.test.mjs`, `...-group-junk.test.mjs`).
+Changes require a plugin redeploy + tests. Today: 508 tests green + 1 skipped across 35 files (the rule-plugin sub-suite includes `orbit-rules-plugin.test.mjs`, `...-safety.test.mjs`, `...-name.test.mjs`, `...-group-junk.test.mjs`).
 
 ### Layer 2 — Agent-mutable blocklist (Supabase table)
 

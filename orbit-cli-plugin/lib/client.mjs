@@ -923,7 +923,7 @@ export async function orbitMessagesFetch(
       "Pass limit between 1 and 5000.",
     );
   }
-  // Default paths — match scripts/topic-resonance.mjs fallback order.
+  // Default paths: env override → ~/.wacli/wacli.db and ~/.wacli/session.db.
   const defaultWacli =
     wacli_db || process.env.WACLI_DB_PATH || `${process.env.HOME}/.wacli/wacli.db`;
   const defaultSession =
@@ -1210,6 +1210,575 @@ export async function orbitLidBridgeUpsert(
   const body = await readBody(res);
   if (!res.ok) return httpError(res, body);
   return body;
+}
+
+// -------------------------------------------------------------------------
+// Onboarding backfill verbs (Phase A — first-run data-seeding on claw).
+//
+// These three verbs replace the legacy `scripts/*.mjs` backfill flow:
+//   orbit_raw_events_backfill_from_wacli  (was: fast-copy-wacli-to-raw-events.mjs)
+//   orbit_interactions_backfill           (was: build-interactions-from-raw-events.mjs)
+//   orbit_lid_bridge_ingest               (was: populate-lid-bridge.mjs)
+//
+// They are invoked from the `orbit-observer-backfill` SKILL on a new
+// founder's claw. Pure plumbing — no LLM, no direct-DB writes. Every
+// write goes through the HTTP API (CLAUDE.md §6: "API is the only
+// writer"). No SSH required; the skill runs on claw, reads local files
+// (~/.wacli/wacli.db, ~/.wacli/session.db), and POSTs up.
+// -------------------------------------------------------------------------
+
+// Shared: UTF-8 sanitizer for WhatsApp text. Postgres TEXT/JSONB reject
+// NULs and unpaired UTF-16 surrogates — strip both before writing.
+// Ported from scripts/fast-copy-wacli-to-raw-events.mjs (which this
+// replaces).
+function cleanString(s) {
+  if (s == null) return null;
+  return String(s)
+    .replace(/\u0000/g, "")
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, "")
+    .replace(/(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "$1");
+}
+
+function safeSlice(s, n) {
+  if (s == null) return null;
+  const arr = Array.from(String(s));
+  return arr.slice(0, n).join("");
+}
+
+// Shared: transform wacli.db rows into raw_events batch schema.
+// Pure function — tested in isolation. Same mapping the legacy script
+// used; staying bit-for-bit identical keeps re-ingest idempotent.
+export function wacliRowsToRawEvents(
+  rows,
+  { connectorVersion = "wacli-backfill-0.4-cli" } = {},
+) {
+  const out = [];
+  for (const r of rows) {
+    const eventId = `${r.chat_jid}|${r.msg_id}`;
+    const body = r.text || r.display_text || r.media_caption || null;
+    const direction = r.from_me === 1 ? "out" : "in";
+    const occurredAt = new Date(Number(r.ts) * 1000).toISOString();
+    const phone =
+      r.sender_jid && /^\d+@s\.whatsapp\.net$/.test(r.sender_jid)
+        ? "+" + r.sender_jid.split("@")[0]
+        : null;
+    const participantsRaw =
+      r.sender_jid && r.sender_jid !== "self"
+        ? [{ jid: r.sender_jid, name: cleanString(r.sender_name) }]
+        : [];
+    out.push({
+      source: "whatsapp",
+      source_event_id: eventId,
+      channel: "whatsapp",
+      connector_version: connectorVersion,
+      occurred_at: occurredAt,
+      direction,
+      thread_id: r.chat_jid,
+      participants_raw: participantsRaw,
+      participant_phones: phone ? [phone] : [],
+      participant_emails: [],
+      body_preview: safeSlice(cleanString(body), 160),
+      attachments_present: Boolean(r.media_type),
+      raw_ref: {
+        chat_name: cleanString(r.chat_name),
+        kind: r.kind ?? "unknown",
+        msg_id: r.msg_id,
+      },
+    });
+  }
+  return out;
+}
+
+async function loadSqliteImpl(injected) {
+  if (injected) return injected;
+  try {
+    const mod = await import("better-sqlite3");
+    return mod.default ?? mod;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * orbit_raw_events_backfill_from_wacli
+ *
+ * One-shot onboarding verb. Reads the founder's local ~/.wacli/wacli.db,
+ * projects every row into a raw_events envelope, chunks into batches of
+ * 500, POSTs each chunk to /api/v1/raw_events. Idempotent on
+ * (user_id, source, source_event_id) — re-running is safe.
+ *
+ * params.wacli_db?     override path (default ~/.wacli/wacli.db).
+ * params.batch_size?   default 500, max 500 (server cap).
+ * params.connector_version? default "wacli-backfill-0.4-cli".
+ * params.dry_run?      if true, do the SQLite read + shape validation
+ *                      but skip POSTs. Returns {ok, dry_run:true, count}.
+ *
+ * Returns {ok, batches_posted, total_rows, total_inserted, total_updated,
+ *          failed_batches[]} on success, {error:{...}} on validation /
+ * local failure.
+ */
+export async function orbitRawEventsBackfillFromWacli(
+  {
+    wacli_db,
+    batch_size = 500,
+    connector_version,
+    dry_run = false,
+    sqliteImpl,
+  } = {},
+  { config, fetchImpl = fetch } = {},
+) {
+  const path = wacli_db || `${process.env.HOME}/.wacli/wacli.db`;
+  if (!existsSync(path)) {
+    return fileNotFoundError(path);
+  }
+  if (!Number.isFinite(batch_size) || batch_size <= 0 || batch_size > 500) {
+    return invalidInputError(
+      `batch_size=${batch_size} out of range (1..500)`,
+      "Server cap is 500 rows per /raw_events batch. Use a smaller size.",
+    );
+  }
+
+  const Database = await loadSqliteImpl(sqliteImpl);
+  if (!Database) {
+    return {
+      error: {
+        code: "VALIDATION_FAILED",
+        message: "better-sqlite3 not available in this runtime",
+        suggestion:
+          "Install better-sqlite3 in the gateway node_modules on claw, then retry.",
+      },
+    };
+  }
+
+  const db = new Database(path, { readonly: true });
+  let rows;
+  try {
+    rows = db
+      .prepare(
+        `SELECT m.chat_jid, m.msg_id, m.sender_jid, m.sender_name, m.ts,
+                m.from_me, m.text, m.display_text, m.media_caption,
+                m.media_type, c.kind, m.chat_name
+           FROM messages m
+      LEFT JOIN chats c ON c.jid = m.chat_jid
+           ORDER BY m.ts`,
+      )
+      .all();
+  } finally {
+    db.close();
+  }
+
+  const events = wacliRowsToRawEvents(rows, {
+    connectorVersion: connector_version,
+  });
+
+  if (dry_run) {
+    return {
+      ok: true,
+      dry_run: true,
+      count: events.length,
+    };
+  }
+
+  if (events.length === 0) {
+    return {
+      ok: true,
+      batches_posted: 0,
+      total_rows: 0,
+      total_inserted: 0,
+      total_updated: 0,
+      failed_batches: [],
+    };
+  }
+
+  const w = unwrapConfig(config);
+  if (w.error) return { error: w.error };
+  const { url, key } = w.config;
+  const target = joinUrl(url, "/raw_events");
+
+  let total_inserted = 0;
+  let total_updated = 0;
+  let batches_posted = 0;
+  const failed_batches = [];
+
+  for (let i = 0; i < events.length; i += batch_size) {
+    const batch = events.slice(i, i + batch_size);
+    batches_posted += 1;
+    let res;
+    try {
+      res = await fetchImpl(target, {
+        method: "POST",
+        headers: authHeaders(key),
+        body: JSON.stringify(batch),
+      });
+    } catch (e) {
+      const err = networkError(e).error;
+      failed_batches.push({ batch_index: i / batch_size, http_status: 0, error: err });
+      continue;
+    }
+    const body = await readBody(res);
+    if (!res.ok) {
+      const err = httpError(res, body).error;
+      failed_batches.push({
+        batch_index: i / batch_size,
+        http_status: res.status,
+        error: err,
+      });
+      continue;
+    }
+    total_inserted += body.inserted ?? 0;
+    total_updated += body.updated ?? 0;
+  }
+
+  return {
+    ok: true,
+    batches_posted,
+    total_rows: events.length,
+    total_inserted,
+    total_updated,
+    failed_batches,
+  };
+}
+
+/**
+ * orbit_lid_bridge_ingest
+ *
+ * Reads the founder's local ~/.wacli/session.db whatsmeow_lid_map
+ * (lid, pn) rows, chunks into batches of ≤1000, POSTs each chunk to
+ * /api/v1/lid_bridge/upsert. Idempotent on (user_id, lid).
+ *
+ * Replaces scripts/populate-lid-bridge.mjs, which used to SSH from the
+ * founder's Mac to claw, shell out to sqlite3, and POST. The new verb
+ * runs ON claw (same host as session.db) so no SSH is required — the
+ * observer-backfill SKILL invokes it directly.
+ *
+ * params.session_db?  override path (default ~/.wacli/session.db).
+ * params.batch_size?  default 500, max 1000 (server cap).
+ *
+ * Returns {ok, rows_dumped, batches_posted, total_upserted, failed_batches[]}.
+ */
+export async function orbitLidBridgeIngest(
+  {
+    session_db,
+    batch_size = 500,
+    sqliteImpl,
+  } = {},
+  { config, fetchImpl = fetch } = {},
+) {
+  const path = session_db || `${process.env.HOME}/.wacli/session.db`;
+  if (!existsSync(path)) {
+    return fileNotFoundError(path);
+  }
+  if (!Number.isFinite(batch_size) || batch_size <= 0 || batch_size > 1000) {
+    return invalidInputError(
+      `batch_size=${batch_size} out of range (1..1000)`,
+      "Server cap is 1000 entries per /lid_bridge/upsert batch.",
+    );
+  }
+
+  const Database = await loadSqliteImpl(sqliteImpl);
+  if (!Database) {
+    return {
+      error: {
+        code: "VALIDATION_FAILED",
+        message: "better-sqlite3 not available in this runtime",
+        suggestion:
+          "Install better-sqlite3 in the gateway node_modules on claw, then retry.",
+      },
+    };
+  }
+
+  const db = new Database(path, { readonly: true });
+  const entries = [];
+  try {
+    const rows = db
+      .prepare("SELECT lid, pn FROM whatsmeow_lid_map")
+      .all();
+    for (const r of rows) {
+      const lid = String(r.lid ?? "").trim().split(":")[0];
+      const phone = String(r.pn ?? "").trim().replace(/\D+/g, "");
+      if (!lid || !phone) continue;
+      entries.push({ lid, phone });
+    }
+  } finally {
+    db.close();
+  }
+
+  if (entries.length === 0) {
+    return {
+      ok: true,
+      rows_dumped: 0,
+      batches_posted: 0,
+      total_upserted: 0,
+      failed_batches: [],
+    };
+  }
+
+  const w = unwrapConfig(config);
+  if (w.error) return { error: w.error };
+  const { url, key } = w.config;
+  const target = joinUrl(url, "/lid_bridge/upsert");
+
+  let total_upserted = 0;
+  let batches_posted = 0;
+  const failed_batches = [];
+
+  for (let i = 0; i < entries.length; i += batch_size) {
+    const batch = entries.slice(i, i + batch_size);
+    batches_posted += 1;
+    let res;
+    try {
+      res = await fetchImpl(target, {
+        method: "POST",
+        headers: authHeaders(key),
+        body: JSON.stringify({ entries: batch }),
+      });
+    } catch (e) {
+      const err = networkError(e).error;
+      failed_batches.push({ batch_index: i / batch_size, http_status: 0, error: err });
+      continue;
+    }
+    const body = await readBody(res);
+    if (!res.ok) {
+      const err = httpError(res, body).error;
+      failed_batches.push({
+        batch_index: i / batch_size,
+        http_status: res.status,
+        error: err,
+      });
+      continue;
+    }
+    total_upserted += body.upserted ?? 0;
+  }
+
+  return {
+    ok: true,
+    rows_dumped: entries.length,
+    batches_posted,
+    total_upserted,
+    failed_batches,
+  };
+}
+
+/**
+ * orbit_interactions_backfill
+ *
+ * Paginates GET /api/v1/raw_events?source=whatsapp, projects each row
+ * into a kind:"interaction" observation, and POSTs them in chunks via
+ * /api/v1/observations. Deduplication is enforced server-side via
+ * observations.dedup_key (SHA-256 over kind + evidence_pointer).
+ *
+ * Replaces scripts/build-interactions-from-raw-events.mjs. Key
+ * differences:
+ *   - Reads raw_events via HTTP (never direct Postgres).
+ *   - Does NOT resolve phone → person_id; the resolver SKILL handles
+ *     merges downstream via kind:"merge" observations. This verb emits
+ *     only kind:"interaction" envelopes; phone/LID bridging is an
+ *     orthogonal step.
+ *   - Batched 100 observations/POST. Server dedupes on re-runs.
+ *
+ * params.source?      default "whatsapp". Only whatsapp is implemented for V0.
+ * params.limit?       per-page limit (default 500, server max 1000).
+ * params.batch_size?  observations per POST (default 100, server max 100).
+ * params.max_pages?   circuit breaker (default 500 pages → 500k rows).
+ * params.self_name?   display name for participants[0] (default "Founder").
+ * params.dry_run?     if true, count only — no POSTs.
+ *
+ * Returns {ok, pages_scanned, rows_scanned, observations_posted,
+ *          total_inserted, total_deduped, failed_batches[]}.
+ */
+export async function orbitInteractionsBackfill(
+  {
+    source = "whatsapp",
+    limit = 500,
+    batch_size = 100,
+    max_pages = 500,
+    self_name = "Founder",
+    dry_run = false,
+  } = {},
+  { config, fetchImpl = fetch } = {},
+) {
+  if (source !== "whatsapp") {
+    return invalidInputError(
+      `source='${source}' not supported in V0; only 'whatsapp'`,
+      "V0 projects WhatsApp raw_events into interactions. Gmail/calendar backfill is tracked for future work.",
+    );
+  }
+  if (!Number.isFinite(limit) || limit <= 0 || limit > 1000) {
+    return invalidInputError(
+      `limit=${limit} out of range (1..1000)`,
+      "Server cap is 1000 rows per /raw_events page. Use a smaller limit.",
+    );
+  }
+  if (!Number.isFinite(batch_size) || batch_size <= 0 || batch_size > 100) {
+    return invalidInputError(
+      `batch_size=${batch_size} out of range (1..100)`,
+      "Server cap is 100 observations per /observations batch.",
+    );
+  }
+
+  const w = unwrapConfig(config);
+  if (w.error) return { error: w.error };
+  const { url, key } = w.config;
+
+  const pageUrl = (cursor) => {
+    const qs = new URLSearchParams();
+    qs.set("source", source);
+    qs.set("limit", String(limit));
+    if (cursor) qs.set("cursor", cursor);
+    return joinUrl(url, `/raw_events?${qs.toString()}`);
+  };
+
+  const obsUrl = joinUrl(url, "/observations");
+
+  let cursor = null;
+  let pages_scanned = 0;
+  let rows_scanned = 0;
+  let observations_posted = 0;
+  let total_inserted = 0;
+  let total_deduped = 0;
+  const failed_batches = [];
+  let pending = [];
+
+  async function flush() {
+    if (pending.length === 0) return;
+    if (dry_run) {
+      observations_posted += pending.length;
+      pending = [];
+      return;
+    }
+    const payload = pending;
+    pending = [];
+    let res;
+    try {
+      res = await fetchImpl(obsUrl, {
+        method: "POST",
+        headers: authHeaders(key),
+        body: JSON.stringify(payload),
+      });
+    } catch (e) {
+      const err = networkError(e).error;
+      failed_batches.push({ http_status: 0, error: err, size: payload.length });
+      return;
+    }
+    const body = await readBody(res);
+    if (!res.ok) {
+      const err = httpError(res, body).error;
+      failed_batches.push({
+        http_status: res.status,
+        error: err,
+        size: payload.length,
+      });
+      return;
+    }
+    observations_posted += payload.length;
+    total_inserted += body.inserted ?? 0;
+    total_deduped += body.deduped ?? 0;
+  }
+
+  for (let page = 0; page < max_pages; page += 1) {
+    let res;
+    try {
+      res = await fetchImpl(pageUrl(cursor), {
+        method: "GET",
+        headers: authHeaders(key),
+      });
+    } catch (e) {
+      return networkError(e);
+    }
+    const body = await readBody(res);
+    if (!res.ok) return httpError(res, body);
+
+    const events = Array.isArray(body?.events) ? body.events : [];
+    pages_scanned += 1;
+    rows_scanned += events.length;
+
+    for (const ev of events) {
+      const obs = rawEventToInteractionObservation(ev, { self_name });
+      if (!obs) continue;
+      pending.push(obs);
+      if (pending.length >= batch_size) {
+        await flush();
+      }
+    }
+
+    if (!body?.next_cursor) break;
+    cursor = body.next_cursor;
+  }
+
+  await flush();
+
+  return {
+    ok: true,
+    pages_scanned,
+    rows_scanned,
+    observations_posted,
+    total_inserted,
+    total_deduped,
+    failed_batches,
+    ...(dry_run ? { dry_run: true } : {}),
+  };
+}
+
+/**
+ * Project one raw_events row into a kind:"interaction" observation.
+ * Returns null for rows that can't be projected (missing phone,
+ * group-kind, self-only, etc.). Deterministic — no LLM, no network.
+ * The resolver SKILL handles merge + person_id resolution downstream.
+ */
+export function rawEventToInteractionObservation(row, { self_name } = {}) {
+  if (!row || typeof row !== "object") return null;
+  const occurred = row.occurred_at;
+  if (!occurred) return null;
+  const kind = row.raw_ref?.kind;
+  // Group-message rows have sender collapsed into chat_jid; skip —
+  // a dedicated group-participant pipeline is future work.
+  if (kind === "group") return null;
+  const phones = Array.isArray(row.participant_phones)
+    ? row.participant_phones.filter(Boolean)
+    : [];
+  if (phones.length === 0) return null;
+  const peerPhone = String(phones[0]).trim();
+  if (!peerPhone) return null;
+
+  const peerRaw = Array.isArray(row.participants_raw) ? row.participants_raw[0] : null;
+  const peerName =
+    peerRaw && typeof peerRaw === "object" && typeof peerRaw.name === "string"
+      ? peerRaw.name.trim()
+      : "";
+  const safePeerName = peerName && peerName.toLowerCase() !== "me" ? peerName : peerPhone;
+
+  const direction = row.direction === "out" ? "out" : "in";
+  const bodyPreview = typeof row.body_preview === "string"
+    ? row.body_preview.trim()
+    : "";
+  const summary =
+    (direction === "out" ? "Outbound" : "Inbound") +
+    ` WhatsApp message: ${bodyPreview || "(no preview)"}`;
+
+  return {
+    kind: "interaction",
+    observed_at: new Date(occurred).toISOString(),
+    observer: "wazowski",
+    evidence_pointer: `wacli://messages/source_event_id=${row.source_event_id}`,
+    confidence: 1.0,
+    reasoning:
+      `Deterministic projection of raw_events row (source=whatsapp, ` +
+      `direction=${direction}, thread_id=${row.thread_id ?? "null"}). ` +
+      `Peer phone ${peerPhone} — resolver will attach to a person via the ` +
+      `phone bridge.`.slice(0, 2000),
+    payload: {
+      participants: [
+        String(self_name || "Founder").slice(0, 256),
+        String(safePeerName).slice(0, 256),
+      ],
+      channel: "whatsapp",
+      summary: summary.slice(0, 2000),
+      topic: "business",
+      relationship_context: "",
+      connection_context: "",
+      sentiment: "neutral",
+    },
+  };
 }
 
 // Exported for tests.

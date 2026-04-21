@@ -19,6 +19,9 @@ import {
   orbitJobsClaim,
   orbitJobsReport,
   orbitLidBridgeUpsert,
+  orbitRawEventsBackfillFromWacli,
+  orbitLidBridgeIngest,
+  orbitInteractionsBackfill,
 } from "./lib/client.mjs";
 import { resolveConfig } from "./lib/env.mjs";
 
@@ -79,7 +82,7 @@ export default definePluginEntry({
   id: "orbit-cli",
   name: "Orbit CLI",
   description:
-    "Plumbing-only wrapper around Orbit's HTTP API. 16 tools: orbit_observation_emit, orbit_observation_bulk, orbit_person_get, orbit_persons_list_enriched, orbit_self_init, orbit_persons_going_cold, orbit_person_get_by_email, orbit_meeting_upsert, orbit_meeting_list, orbit_topics_upsert, orbit_topics_get, orbit_calendar_fetch, orbit_messages_fetch, orbit_jobs_claim, orbit_jobs_report, orbit_lid_bridge_upsert.",
+    "Plumbing-only wrapper around Orbit's HTTP API. 19 tools: orbit_observation_emit, orbit_observation_bulk, orbit_person_get, orbit_persons_list_enriched, orbit_self_init, orbit_persons_going_cold, orbit_person_get_by_email, orbit_meeting_upsert, orbit_meeting_list, orbit_topics_upsert, orbit_topics_get, orbit_calendar_fetch, orbit_messages_fetch, orbit_jobs_claim, orbit_jobs_report, orbit_lid_bridge_upsert, orbit_raw_events_backfill_from_wacli, orbit_lid_bridge_ingest, orbit_interactions_backfill.",
   register(api) {
     // --- Observations ----------------------------------------------------
     api.registerTool({
@@ -444,6 +447,103 @@ export default definePluginEntry({
         required: ["entries"],
       },
       execute: withCfg(orbitLidBridgeUpsert),
+    });
+
+    // --- Onboarding backfill verbs (first-run only) ----------------------
+    api.registerTool({
+      name: "orbit_raw_events_backfill_from_wacli",
+      description:
+        "One-shot onboarding: read ~/.wacli/wacli.db on claw, project every message row into a raw_events envelope (source='whatsapp'), chunk into batches of 500, and POST to /api/v1/raw_events. Idempotent on (user_id, source, source_event_id) — re-runs are safe. Returns {ok, batches_posted, total_rows, total_inserted, total_updated, failed_batches}. Invoked by the orbit-observer-backfill SKILL during a new founder's first-run detection. No LLM, no direct DB.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          wacli_db: {
+            type: "string",
+            description:
+              "Optional override for ~/.wacli/wacli.db. Useful on non-claw dev hosts.",
+          },
+          batch_size: {
+            type: "number",
+            description:
+              "Rows per /raw_events POST. Default 500, server cap 500.",
+          },
+          connector_version: {
+            type: "string",
+            description:
+              "Value to stamp into raw_events.connector_version. Default 'wacli-backfill-0.4-cli'.",
+          },
+          dry_run: {
+            type: "boolean",
+            description:
+              "If true, read + shape-validate but skip POSTs. Returns {ok, dry_run:true, count}.",
+          },
+        },
+      },
+      execute: withCfg(orbitRawEventsBackfillFromWacli),
+    });
+
+    api.registerTool({
+      name: "orbit_lid_bridge_ingest",
+      description:
+        "One-shot onboarding: read ~/.wacli/session.db's whatsmeow_lid_map on claw, chunk rows into batches of ≤1000, and POST each to /api/v1/lid_bridge/upsert. Idempotent on (user_id, lid). Runs ON claw (same host as session.db) — no SSH required. Returns {ok, rows_dumped, batches_posted, total_upserted, failed_batches}. Called by orbit-observer-backfill.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          session_db: {
+            type: "string",
+            description:
+              "Optional override for ~/.wacli/session.db.",
+          },
+          batch_size: {
+            type: "number",
+            description:
+              "Entries per /lid_bridge/upsert POST. Default 500, server cap 1000.",
+          },
+        },
+      },
+      execute: withCfg(orbitLidBridgeIngest),
+    });
+
+    api.registerTool({
+      name: "orbit_interactions_backfill",
+      description:
+        "Paginate GET /api/v1/raw_events?source=whatsapp, project each row deterministically into a kind:'interaction' observation, POST in batches of 100 via /api/v1/observations. Server dedupes on evidence_pointer so re-running is idempotent. Does NOT resolve person_id — the resolver SKILL handles that downstream via kind:'merge' observations. Returns {ok, pages_scanned, rows_scanned, observations_posted, total_inserted, total_deduped, failed_batches}. Invoked by orbit-observer-backfill after raw_events are seeded.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          source: {
+            type: "string",
+            description: "Raw event source. V0 supports only 'whatsapp' (default).",
+          },
+          limit: {
+            type: "number",
+            description: "Rows per /raw_events page. Default 500, server cap 1000.",
+          },
+          batch_size: {
+            type: "number",
+            description:
+              "Observations per /observations POST. Default 100, server cap 100.",
+          },
+          max_pages: {
+            type: "number",
+            description: "Circuit breaker on total pages scanned. Default 500.",
+          },
+          self_name: {
+            type: "string",
+            description:
+              "Display name used for participants[0] on each interaction. Default 'Founder'.",
+          },
+          dry_run: {
+            type: "boolean",
+            description:
+              "If true, scan + count but skip /observations POSTs. Returns a summary with dry_run:true.",
+          },
+        },
+      },
+      execute: withCfg(orbitInteractionsBackfill),
     });
   },
 });

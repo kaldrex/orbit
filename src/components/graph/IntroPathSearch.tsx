@@ -119,7 +119,7 @@ export default function IntroPathSearch({
         return;
       }
       if (!r.ok) {
-        // Neo4j 503 / GDS 501 / anything else — treat as miss, explain.
+        // Neo4j 503 / anything else — treat as miss, explain.
         announceMiss("Graph intelligence unavailable.");
         return;
       }

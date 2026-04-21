@@ -29,6 +29,11 @@ import {
   orbitJobsClaim,
   orbitJobsReport,
   orbitLidBridgeUpsert,
+  orbitRawEventsBackfillFromWacli,
+  orbitLidBridgeIngest,
+  orbitInteractionsBackfill,
+  rawEventToInteractionObservation,
+  wacliRowsToRawEvents,
 } from "../../orbit-cli-plugin/lib/client.mjs";
 import { resolveConfig } from "../../orbit-cli-plugin/lib/env.mjs";
 
@@ -748,5 +753,445 @@ describe("orbit_lid_bridge_upsert", () => {
     expect(r.error.code).toBe("INVALID_INPUT");
     expect(r.error.message).toMatch(/exceeds server cap/);
     expect(fetchMock.calls).toHaveLength(0);
+  });
+});
+
+// =========================================================================
+// Phase B — onboarding backfill verbs
+// =========================================================================
+
+// Minimal better-sqlite3 stand-in for the backfill verbs. Records what
+// SQL was run and serves scripted rows.
+function fakeWacliSqlite({ messages = [], lidMap = [] } = {}) {
+  return class FakeDB {
+    constructor(path, opts) {
+      this.path = path;
+      this.opts = opts;
+      this._closed = false;
+    }
+    prepare(sql) {
+      return {
+        all: () => {
+          if (sql.includes("FROM messages m")) return messages;
+          if (sql.includes("whatsmeow_lid_map")) return lidMap;
+          return [];
+        },
+      };
+    }
+    close() {
+      this._closed = true;
+    }
+  };
+}
+
+// =========================================================================
+// wacliRowsToRawEvents (pure mapping)
+// =========================================================================
+
+describe("wacliRowsToRawEvents", () => {
+  it("projects a DM row into a shaped raw_events envelope", () => {
+    const rows = [
+      {
+        chat_jid: "971586783040@s.whatsapp.net",
+        msg_id: "M1",
+        sender_jid: "971586783040@s.whatsapp.net",
+        sender_name: "Umayr",
+        ts: 1_700_000_000,
+        from_me: 0,
+        text: "hi",
+        display_text: null,
+        media_caption: null,
+        media_type: null,
+        kind: "dm",
+        chat_name: "Umayr",
+      },
+    ];
+    const out = wacliRowsToRawEvents(rows);
+    expect(out).toHaveLength(1);
+    const e = out[0];
+    expect(e.source).toBe("whatsapp");
+    expect(e.source_event_id).toBe("971586783040@s.whatsapp.net|M1");
+    expect(e.direction).toBe("in");
+    expect(e.participant_phones).toEqual(["+971586783040"]);
+    expect(e.body_preview).toBe("hi");
+    expect(e.raw_ref.msg_id).toBe("M1");
+  });
+
+  it("strips NULs from body_preview and raw_ref", () => {
+    const rows = [
+      {
+        chat_jid: "1@s.whatsapp.net",
+        msg_id: "m",
+        sender_jid: "1@s.whatsapp.net",
+        sender_name: "Nam\u0000e",
+        ts: 1,
+        from_me: 0,
+        text: "hi\u0000there",
+        display_text: null,
+        media_caption: null,
+        media_type: null,
+        kind: "dm",
+        chat_name: "Co\u0000ol",
+      },
+    ];
+    const out = wacliRowsToRawEvents(rows);
+    expect(out[0].body_preview).not.toContain("\u0000");
+    expect(out[0].raw_ref.chat_name).not.toContain("\u0000");
+    expect(out[0].participants_raw[0].name).not.toContain("\u0000");
+  });
+});
+
+// =========================================================================
+// orbit_raw_events_backfill_from_wacli
+// =========================================================================
+
+describe("orbit_raw_events_backfill_from_wacli", () => {
+  it("happy path: reads wacli → POSTs batches of 500 → returns counts", async () => {
+    // 1,100 rows → 3 batches of [500, 500, 100].
+    const messages = Array.from({ length: 1100 }, (_, i) => ({
+      chat_jid: `c${i}@s.whatsapp.net`,
+      msg_id: `m${i}`,
+      sender_jid: `${9000000000 + i}@s.whatsapp.net`,
+      sender_name: "Peer",
+      ts: 1_700_000_000 + i,
+      from_me: i % 2,
+      text: `msg ${i}`,
+      display_text: null,
+      media_caption: null,
+      media_type: null,
+      kind: "dm",
+      chat_name: null,
+    }));
+    const sqliteImpl = fakeWacliSqlite({ messages });
+    const fetchMock = makeFetch(() =>
+      jsonResponse({ ok: true, accepted: 500, inserted: 500, updated: 0 }),
+    );
+    const r = await orbitRawEventsBackfillFromWacli(
+      {
+        wacli_db: __filename, // any existing file; fake sqlite ignores contents
+        sqliteImpl,
+      },
+      { config: CFG, fetchImpl: fetchMock },
+    );
+    expect(r.ok).toBe(true);
+    expect(r.total_rows).toBe(1100);
+    expect(r.batches_posted).toBe(3);
+    // inserted = sum of fake responses (3 × 500 = 1500) — test only
+    // checks the plumbing, not the server math.
+    expect(r.total_inserted).toBe(1500);
+    expect(r.failed_batches).toHaveLength(0);
+    expect(fetchMock.calls).toHaveLength(3);
+    expect(fetchMock.calls[0].url).toBe(
+      "http://100.97.152.84:3047/api/v1/raw_events",
+    );
+  });
+
+  it("dry_run: no POSTs, just count", async () => {
+    const messages = Array.from({ length: 17 }, (_, i) => ({
+      chat_jid: `c${i}@s.whatsapp.net`,
+      msg_id: `m${i}`,
+      sender_jid: `100${i}@s.whatsapp.net`,
+      sender_name: "P",
+      ts: 1_700_000_000 + i,
+      from_me: 0,
+      text: "x",
+      display_text: null,
+      media_caption: null,
+      media_type: null,
+      kind: "dm",
+      chat_name: null,
+    }));
+    const sqliteImpl = fakeWacliSqlite({ messages });
+    const fetchMock = makeFetch(() => jsonResponse({}));
+    const r = await orbitRawEventsBackfillFromWacli(
+      { wacli_db: __filename, dry_run: true, sqliteImpl },
+      { config: CFG, fetchImpl: fetchMock },
+    );
+    expect(r.ok).toBe(true);
+    expect(r.dry_run).toBe(true);
+    expect(r.count).toBe(17);
+    expect(fetchMock.calls).toHaveLength(0);
+  });
+
+  it("structured error: missing wacli_db → FILE_NOT_FOUND", async () => {
+    const fetchMock = makeFetch(() => jsonResponse({}));
+    const r = await orbitRawEventsBackfillFromWacli(
+      { wacli_db: "/tmp/orbit-not-here-xyz.db" },
+      { config: CFG, fetchImpl: fetchMock },
+    );
+    expect(r.error.code).toBe("FILE_NOT_FOUND");
+    expect(fetchMock.calls).toHaveLength(0);
+  });
+
+  it("structured error: invalid batch_size rejected locally", async () => {
+    const sqliteImpl = fakeWacliSqlite({ messages: [] });
+    const fetchMock = makeFetch(() => jsonResponse({}));
+    const r = await orbitRawEventsBackfillFromWacli(
+      { wacli_db: __filename, batch_size: 5000, sqliteImpl },
+      { config: CFG, fetchImpl: fetchMock },
+    );
+    expect(r.error.code).toBe("INVALID_INPUT");
+    expect(r.error.message).toMatch(/out of range/);
+    expect(fetchMock.calls).toHaveLength(0);
+  });
+});
+
+// =========================================================================
+// orbit_lid_bridge_ingest
+// =========================================================================
+
+describe("orbit_lid_bridge_ingest", () => {
+  it("happy path: reads session.db → chunks → POSTs bridge entries", async () => {
+    const lidMap = Array.from({ length: 1200 }, (_, i) => ({
+      lid: String(100000 + i),
+      pn: String(919000000000 + i),
+    }));
+    const sqliteImpl = fakeWacliSqlite({ lidMap });
+    const fetchMock = makeFetch(() => jsonResponse({ upserted: 500 }));
+    const r = await orbitLidBridgeIngest(
+      { session_db: __filename, sqliteImpl },
+      { config: CFG, fetchImpl: fetchMock },
+    );
+    expect(r.ok).toBe(true);
+    expect(r.rows_dumped).toBe(1200);
+    expect(r.batches_posted).toBe(3); // 500 + 500 + 200
+    expect(r.total_upserted).toBe(1500);
+    expect(fetchMock.calls).toHaveLength(3);
+    expect(fetchMock.calls[0].url).toBe(
+      "http://100.97.152.84:3047/api/v1/lid_bridge/upsert",
+    );
+    const body = JSON.parse(fetchMock.calls[0].init.body);
+    expect(body.entries).toHaveLength(500);
+    expect(body.entries[0].lid).toBe("100000");
+    expect(body.entries[0].phone).toBe("919000000000");
+  });
+
+  it("drops rows with missing lid or pn", async () => {
+    const lidMap = [
+      { lid: "123", pn: "9199" },
+      { lid: "", pn: "9199" }, // skip
+      { lid: "456", pn: "" }, // skip
+      { lid: null, pn: null }, // skip
+    ];
+    const sqliteImpl = fakeWacliSqlite({ lidMap });
+    const fetchMock = makeFetch(() => jsonResponse({ upserted: 1 }));
+    const r = await orbitLidBridgeIngest(
+      { session_db: __filename, sqliteImpl },
+      { config: CFG, fetchImpl: fetchMock },
+    );
+    expect(r.rows_dumped).toBe(1);
+    expect(fetchMock.calls).toHaveLength(1);
+    const body = JSON.parse(fetchMock.calls[0].init.body);
+    expect(body.entries).toHaveLength(1);
+  });
+
+  it("no rows → {rows_dumped:0, batches_posted:0} and no POST", async () => {
+    const sqliteImpl = fakeWacliSqlite({ lidMap: [] });
+    const fetchMock = makeFetch(() => jsonResponse({}));
+    const r = await orbitLidBridgeIngest(
+      { session_db: __filename, sqliteImpl },
+      { config: CFG, fetchImpl: fetchMock },
+    );
+    expect(r.ok).toBe(true);
+    expect(r.rows_dumped).toBe(0);
+    expect(r.batches_posted).toBe(0);
+    expect(fetchMock.calls).toHaveLength(0);
+  });
+
+  it("structured error: missing session_db → FILE_NOT_FOUND", async () => {
+    const r = await orbitLidBridgeIngest(
+      { session_db: "/tmp/orbit-def-not-here-xyz.db" },
+      { config: CFG },
+    );
+    expect(r.error.code).toBe("FILE_NOT_FOUND");
+  });
+});
+
+// =========================================================================
+// rawEventToInteractionObservation (pure)
+// =========================================================================
+
+describe("rawEventToInteractionObservation", () => {
+  function dmRow(overrides = {}) {
+    return {
+      source_event_id: "971586783040@s.whatsapp.net|M1",
+      occurred_at: "2026-04-19T10:00:00.000Z",
+      direction: "in",
+      thread_id: "971586783040@s.whatsapp.net",
+      participants_raw: [{ jid: "971586783040@s.whatsapp.net", name: "Umayr" }],
+      participant_phones: ["+971586783040"],
+      body_preview: "hi there",
+      raw_ref: { kind: "dm" },
+      ...overrides,
+    };
+  }
+
+  it("projects a DM row into a valid kind:'interaction' observation", () => {
+    const obs = rawEventToInteractionObservation(dmRow(), { self_name: "Sanchay" });
+    expect(obs.kind).toBe("interaction");
+    expect(obs.observer).toBe("wazowski");
+    expect(obs.payload.participants).toEqual(["Sanchay", "Umayr"]);
+    expect(obs.payload.channel).toBe("whatsapp");
+    expect(obs.payload.summary).toMatch(/Inbound WhatsApp/);
+    expect(obs.evidence_pointer).toBe(
+      "wacli://messages/source_event_id=971586783040@s.whatsapp.net|M1",
+    );
+  });
+
+  it("skips group-kind rows (returns null)", () => {
+    const r = rawEventToInteractionObservation(
+      dmRow({ raw_ref: { kind: "group" } }),
+      { self_name: "Sanchay" },
+    );
+    expect(r).toBeNull();
+  });
+
+  it("skips rows without a participant phone", () => {
+    const r = rawEventToInteractionObservation(
+      dmRow({ participant_phones: [] }),
+      { self_name: "Sanchay" },
+    );
+    expect(r).toBeNull();
+  });
+
+  it("falls back to phone when peer name is 'me' or missing", () => {
+    const obs = rawEventToInteractionObservation(
+      dmRow({ participants_raw: [{ name: "me" }] }),
+      { self_name: "Sanchay" },
+    );
+    expect(obs.payload.participants[1]).toBe("+971586783040");
+  });
+
+  it("maps direction:'out' to 'Outbound' in summary", () => {
+    const obs = rawEventToInteractionObservation(
+      dmRow({ direction: "out" }),
+      { self_name: "S" },
+    );
+    expect(obs.payload.summary).toMatch(/Outbound/);
+  });
+});
+
+// =========================================================================
+// orbit_interactions_backfill
+// =========================================================================
+
+describe("orbit_interactions_backfill", () => {
+  function evt(i) {
+    return {
+      id: `aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa${String(i).padStart(3, "0")}`,
+      source_event_id: `${9000000000 + i}@s.whatsapp.net|m${i}`,
+      occurred_at: `2026-04-${10 + (i % 10)}T10:00:00.000Z`,
+      direction: i % 2 ? "out" : "in",
+      thread_id: `${9000000000 + i}@s.whatsapp.net`,
+      participants_raw: [{ name: `Peer${i}` }],
+      participant_phones: [`+${9000000000 + i}`],
+      body_preview: `msg ${i}`,
+      raw_ref: { kind: "dm" },
+    };
+  }
+
+  it("happy path: paginates raw_events → POSTs observations in chunks", async () => {
+    // 250 events across 3 pages (100, 100, 50), chunked into observations of 100 each
+    // so 3 /observations POSTs.
+    const pages = [
+      { events: Array.from({ length: 100 }, (_, i) => evt(i)), next_cursor: "c1" },
+      { events: Array.from({ length: 100 }, (_, i) => evt(i + 100)), next_cursor: "c2" },
+      { events: Array.from({ length: 50 }, (_, i) => evt(i + 200)), next_cursor: null },
+    ];
+    let pageIdx = 0;
+    const fetchMock = makeFetch((url) => {
+      if (url.includes("/raw_events")) {
+        return jsonResponse(pages[pageIdx++] ?? { events: [], next_cursor: null });
+      }
+      if (url.includes("/observations")) {
+        return jsonResponse({ ok: true, accepted: 100, inserted: 100, deduped: 0 });
+      }
+      return jsonResponse({}, { status: 500 });
+    });
+    const r = await orbitInteractionsBackfill(
+      { limit: 100, batch_size: 100, self_name: "Sanchay" },
+      { config: CFG, fetchImpl: fetchMock },
+    );
+    expect(r.ok).toBe(true);
+    expect(r.pages_scanned).toBe(3);
+    expect(r.rows_scanned).toBe(250);
+    expect(r.observations_posted).toBe(250);
+    expect(r.failed_batches).toHaveLength(0);
+
+    // /raw_events hits: 3 (one per page)
+    const rawHits = fetchMock.calls.filter((c) => c.url.includes("/raw_events"));
+    expect(rawHits).toHaveLength(3);
+    // /observations hits: 3 (250 / 100 → batches of 100, 100, 50)
+    const obsHits = fetchMock.calls.filter((c) => c.url.includes("/observations"));
+    expect(obsHits).toHaveLength(3);
+  });
+
+  it("skips group-kind rows when projecting", async () => {
+    const events = [
+      evt(1),
+      { ...evt(2), raw_ref: { kind: "group" } },
+      evt(3),
+      { ...evt(4), participant_phones: [] },
+    ];
+    const fetchMock = makeFetch((url) => {
+      if (url.includes("/raw_events")) {
+        return jsonResponse({ events, next_cursor: null });
+      }
+      return jsonResponse({ ok: true, accepted: 2, inserted: 2, deduped: 0 });
+    });
+    const r = await orbitInteractionsBackfill(
+      { limit: 100, batch_size: 100 },
+      { config: CFG, fetchImpl: fetchMock },
+    );
+    expect(r.rows_scanned).toBe(4);
+    expect(r.observations_posted).toBe(2); // group + phoneless dropped
+  });
+
+  it("dry_run: no /observations POSTs, count only", async () => {
+    const events = Array.from({ length: 12 }, (_, i) => evt(i));
+    let hit = 0;
+    const fetchMock = makeFetch((url) => {
+      hit += 1;
+      if (url.includes("/raw_events")) {
+        return jsonResponse({ events, next_cursor: null });
+      }
+      return jsonResponse({}, { status: 500 });
+    });
+    const r = await orbitInteractionsBackfill(
+      { limit: 50, batch_size: 50, dry_run: true },
+      { config: CFG, fetchImpl: fetchMock },
+    );
+    expect(r.dry_run).toBe(true);
+    expect(r.observations_posted).toBe(12);
+    // Only /raw_events hit, never /observations.
+    const obsHits = fetchMock.calls.filter((c) => c.url.includes("/observations"));
+    expect(obsHits).toHaveLength(0);
+  });
+
+  it("structured error: unsupported source rejected locally", async () => {
+    const fetchMock = makeFetch(() => jsonResponse({}));
+    const r = await orbitInteractionsBackfill(
+      { source: "gmail" },
+      { config: CFG, fetchImpl: fetchMock },
+    );
+    expect(r.error.code).toBe("INVALID_INPUT");
+    expect(fetchMock.calls).toHaveLength(0);
+  });
+
+  it("records failed /observations batches without aborting", async () => {
+    const events = Array.from({ length: 10 }, (_, i) => evt(i));
+    const fetchMock = makeFetch((url) => {
+      if (url.includes("/raw_events")) {
+        return jsonResponse({ events, next_cursor: null });
+      }
+      return jsonResponse({ error: "boom" }, { status: 500 });
+    });
+    const r = await orbitInteractionsBackfill(
+      { limit: 100, batch_size: 100 },
+      { config: CFG, fetchImpl: fetchMock },
+    );
+    expect(r.ok).toBe(true);
+    expect(r.failed_batches).toHaveLength(1);
+    expect(r.failed_batches[0].http_status).toBe(500);
   });
 });

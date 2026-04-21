@@ -1,0 +1,11 @@
+import { readFileSync } from "node:fs";
+import pg from "pg";
+const e = Object.fromEntries(readFileSync("/Users/sanchay/Documents/projects/personal/orbit/.claude/worktrees/autonomous-2026-04-19/.env.local","utf8").split("\n").filter(l=>l&&!l.startsWith("#")&&l.includes("=")).map(l=>{const i=l.indexOf("=");return [l.slice(0,i).trim(),l.slice(i+1).trim()]}));
+const c = new pg.Client({connectionString: e.SUPABASE_DB_URL}); await c.connect();
+const r = await c.query("SELECT column_name, data_type FROM information_schema.columns WHERE table_name='observations' ORDER BY ordinal_position");
+console.log(r.rows);
+const r2 = await c.query("SELECT kind, count(*)::int c FROM observations GROUP BY 1 ORDER BY c DESC");
+console.log("kinds:", r2.rows);
+const r3 = await c.query("SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY 1");
+console.log("tables:", r3.rows.map(r=>r.table_name));
+await c.end();

@@ -2,7 +2,7 @@
 
 > **STATUS: historical architecture narrative, superseded on counts + state by [14-cleanup-2026-04-20.md](./14-cleanup-2026-04-20.md) and [15-future-props.md](./15-future-props.md).**
 >
-> Inline counts like "108 tests" and "8 commits" are snapshots from 2026-04-19 end-of-session and are left untouched as a record of what was true then. Current truth: **329 tests across 19 files, 1,602 persons, 5 live API routes, plus the `orbit-cli-plugin/` with 4 verbs.**
+> Inline counts like "108 tests" and "8 commits" are snapshots from 2026-04-19 end-of-session and are left untouched as a record of what was true then. Current truth (2026-04-21 post-audit): **508 tests + 1 skipped across 35 files, 1,602 persons, 18 V1 API routes, plus `orbit-cli-plugin/` v0.3.0 with 16 verbs.**
 >
 > This doc remains the best narrative source for: the V0 mental model, the observer → basket → resolver → card pipeline, the CLI-is-plumbing design invariant, gotchas learned the hard way (section 10). Read it for architecture, read 14/15 for current state.
 
@@ -344,7 +344,7 @@ ssh claw 'timeout 300 openclaw agent --agent main --thinking medium --timeout 24
   --message "Execute the orbit-observer skill for seed <JID-OR-PHONE>..."'
 
 # 6. Run tests
-npm test    # expect 329 green (as of 2026-04-20 post-cleanup + Stage 6)
+npm test    # expect 508 green + 1 skipped across 35 files (as of 2026-04-21 post-V1)
 ```
 
 Redeploy path if any of the claw-side artifacts drift:

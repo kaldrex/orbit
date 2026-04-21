@@ -34,8 +34,6 @@ export interface ReagraphNode {
     category: string;
     lastInteractionAt: string | null;
     goingCold: boolean;
-    /** 0..1 — only populated for top-N hubs from /graph/centrality. */
-    hubScore?: number;
     /** true when the node is filtered out by the active tab. We dim
      *  instead of removing so the network topology stays stable as
      *  the user pivots between filters. */
@@ -107,28 +105,15 @@ function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
 }
 
-export interface ToReagraphOptions {
-  /** personId → hex/hsl colour. Used by the "Community view" toggle to
-   *  override category fill. Self-node stays white regardless. */
-  communityColor?: Record<string, string> | null;
-  /** personId → 0..1 hub score from /graph/centrality. Hub nodes get a
-   *  1.5×–2× size bump so Sanchay can spot connectors at a glance. */
-  hubScore?: Map<string, number> | null;
-}
-
 /**
  * Convert API nodes to Reagraph nodes.
  * @param selfNodeId — the current user's self-node ID (replaces hardcoded "hardeep")
- * @param opts — optional graph-intelligence overlays (community colour, hub size)
  */
 export function toReagraphNodes(
   apiNodes: ApiNode[],
   selfNodeId: string,
-  opts: ToReagraphOptions = {},
 ): ReagraphNode[] {
   const out: ReagraphNode[] = [];
-  const cc = opts.communityColor ?? null;
-  const hubs = opts.hubScore ?? null;
   for (const n of apiNodes) {
     if (isJunkName(n.name)) continue;
     const cat = n.category || "other";
@@ -150,27 +135,20 @@ export function toReagraphNodes(
       continue;
     }
 
-    const baseSize = clamp(n.score * 2.2 + 3, 4, 24);
-    const hubScore = hubs?.get(n.id);
-    // Top-10 hubs get a 1.5× (least-central of top-10) to 2× (most-central)
-    // size bump so connectors stand out without overwhelming the canvas.
-    const sizeMultiplier = hubScore === undefined ? 1 : 1.5 + 0.5 * hubScore;
-    const fill = cc?.[n.id] ?? meta.color;
+    const size = clamp(n.score * 2.2 + 3, 4, 24);
 
-    const node: ReagraphNode = {
+    out.push({
       id: n.id,
       label: n.name,
-      fill,
-      size: clamp(baseSize * sizeMultiplier, 4, 40),
+      fill: meta.color,
+      size,
       data: {
         score: n.score,
         category: cat,
         lastInteractionAt: n.lastInteractionAt,
         goingCold: computeCold(n.lastInteractionAt, n.score),
       },
-    };
-    if (hubScore !== undefined) node.data.hubScore = hubScore;
-    out.push(node);
+    });
   }
   return out;
 }

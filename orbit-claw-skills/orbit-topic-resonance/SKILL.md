@@ -60,7 +60,7 @@ For each person, call `orbit_messages_fetch({person_id, limit: 200})`. The tool 
 Persons with `count == 0` (or `reason: "no_phones_on_card"`) are dropped from the rest of the pass.
 
 **3. Batched topic extraction (THE LLM STEP).**
-For every person with ≥1 message, call Haiku 4.5 in a batch of ~30 persons per call. Cache the system prompt (the canonical topic-extraction instructions — see `scripts/topic-resonance.mjs` for the prompt text).
+For every person with ≥1 message, call Haiku 4.5 in a batch of ~30 persons per call. Cache the system prompt (the canonical topic-extraction instructions are defined inline in §Prompt template below).
 
 Per-call user block:
 ```
@@ -84,15 +84,6 @@ Use `orbit_topics_get` to sample a few high-score persons to sanity-check. Then 
 - Anthropic cost.
 - Top 5 topics by person-count.
 - Topic-count distribution.
-
-## The "fat driver" fallback
-
-If you can't orchestrate the 4 steps interactively (e.g. the agent is operating under a strict single-tool-at-a-time pattern), invoke the packaged node script which does the same dance:
-```
-cd ~/orbit-pipeline-tmp
-node --env-file=$HOME/.openclaw/.env scripts/topic-resonance.mjs
-```
-The script uses the same CLI verbs under the hood via direct `fetch` (internal, not the SKILL's concern). Prefer the 4-step SKILL flow for visibility; fall back to the script only when the agent needs to delegate the whole loop.
 
 ## Failure modes
 

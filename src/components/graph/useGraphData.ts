@@ -22,18 +22,10 @@ import {
 // browsable via the (future) /persons list view + PersonPanel.
 const MAX_RENDERED_NODES = 200;
 
-export interface GraphDataOverlays {
-  /** Per-person override fill (community-view). */
-  communityColor?: Record<string, string> | null;
-  /** Per-person 0..1 hub score used for size bump + ring markers. */
-  hubScore?: Map<string, number> | null;
-}
-
 export function useGraphData(
   activeFilter: string,
   selfNodeId: string,
   showSelfEdges: boolean = false,
-  overlays: GraphDataOverlays = {},
 ) {
   const [raw, setRaw] = useState<ApiGraphData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,15 +49,10 @@ export function useGraphData(
     return () => { cancelled = true; };
   }, []);
 
-  const { communityColor, hubScore } = overlays;
-
   const { nodes, edges } = useMemo<{ nodes: ReagraphNode[]; edges: ReagraphEdge[] }>(() => {
     if (!raw) return { nodes: [], edges: [] };
 
-    const allNodes = toReagraphNodes(raw.nodes, selfNodeId, {
-      communityColor: communityColor ?? null,
-      hubScore: hubScore ?? null,
-    });
+    const allNodes = toReagraphNodes(raw.nodes, selfNodeId);
     // Keep every edge with a positive weight. The old >= 1 threshold
     // hid 123 of 160 real connections because our weights are log-based
     // and typically fractional.
@@ -108,7 +95,7 @@ export function useGraphData(
     );
     const filteredEdges = filterEdgesByNodes(allEdges, bright);
     return { nodes: filtered, edges: filteredEdges };
-  }, [raw, activeFilter, selfNodeId, showSelfEdges, communityColor, hubScore]);
+  }, [raw, activeFilter, selfNodeId, showSelfEdges]);
 
   return { nodes, edges, loading, error, rawStats: raw?.stats };
 }

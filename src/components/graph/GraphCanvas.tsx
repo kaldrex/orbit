@@ -21,10 +21,12 @@ interface GraphCanvasProps {
   activeFilter: string;
   selfNodeId: string;
   isDark?: boolean;
-  /** When non-null, overrides node fill per personId (community view). */
-  communityColor?: Record<string, string> | null;
-  /** personId → 0..1 hub score; drives the size bump on top-10 connectors. */
-  hubScore?: Map<string, number> | null;
+  /**
+   * Fires once the /api/v1/graph stats arrive. Single source of truth
+   * for the dashboard footer ("N People · M Going Cold") so we don't
+   * double-fetch the graph payload just to get counts.
+   */
+  onStats?: (stats: { totalPeople: number; goingCold: number }) => void;
 }
 
 function resolveLayoutType(key: LayoutKey): LayoutTypes {
@@ -45,8 +47,7 @@ export default function GraphCanvas({
   activeFilter,
   selfNodeId,
   isDark = true,
-  communityColor = null,
-  hubScore = null,
+  onStats,
 }: GraphCanvasProps) {
   const graphRef = useRef<GraphCanvasRef | null>(null);
   // Default to forceDirected for the organic "constellation" look. The
@@ -62,12 +63,21 @@ export default function GraphCanvas({
     node: null, x: 0, y: 0,
   });
 
-  const { nodes, edges, loading, error } = useGraphData(
+  const { nodes, edges, loading, error, rawStats } = useGraphData(
     activeFilter,
     selfNodeId,
     false,
-    { communityColor, hubScore },
   );
+
+  // Lift stats to the parent so the dashboard footer can render
+  // "N People · M Going Cold" without issuing its own /api/v1/graph
+  // fetch. Fires once per stats payload change.
+  useEffect(() => {
+    if (!onStats || !rawStats) return;
+    const totalPeople = typeof rawStats.totalPeople === "number" ? rawStats.totalPeople : 0;
+    const goingCold = typeof rawStats.goingCold === "number" ? rawStats.goingCold : 0;
+    onStats({ totalPeople, goingCold });
+  }, [rawStats, onStats]);
   const [contextLost, setContextLost] = useState(false);
 
   // Recover from WebGL context loss

@@ -1,44 +1,38 @@
 #!/usr/bin/env bash
 # Dispatcher: enricher (14-day cadence).
 #
-# Reads payload {persons: [uuid,...]} from stdin. Shells out to the
-# Haiku enricher (scripts/enricher-v5-haiku.mjs) running on claw. The
-# enricher POSTs observations back through ORBIT_API_URL, so no direct
-# DB writes from this dispatcher.
+# Reads a JSON payload {limit?: number} from stdin. Fires the
+# orbit-enricher SKILL headlessly via `openclaw agent`. The SKILL
+# pulls up to `limit` (default 30) skeleton persons via
+# orbit_persons_list_enriched, fetches their recent WhatsApp context,
+# classifies the whole batch in ONE Sonnet 4 call (funded by the
+# founder's ANTHROPIC_API_KEY on claw), and emits person observations
+# back through orbit_observation_bulk.
 #
-# The enricher script has its own budget + resilience controls; this
-# wrapper just invokes it and relays exit status.
+# No direct DB writes. No Node-script shell-out. All LLM judgment lives
+# in the SKILL; this wrapper is pure plumbing.
+#
+# Output (stdout): {"status":"succeeded"|"failed","data":{...}}
 
 set -u
 PAYLOAD="$(cat)"
+LIMIT="$(printf '%s' "${PAYLOAD}" | jq -r '.limit // 30')"
 
-ENRICHER_SCRIPT="${ORBIT_ENRICHER_SCRIPT:-/home/sanchay/orbit/scripts/enricher-v5-haiku.mjs}"
-
-if [[ ! -f "${ENRICHER_SCRIPT}" ]]; then
-  jq -nc --arg path "${ENRICHER_SCRIPT}" \
-    '{status:"failed", data:{error:"enricher script not found", path:$path}}'
+if ! command -v openclaw >/dev/null 2>&1; then
+  jq -nc '{status:"failed", data:{error:"openclaw CLI not installed on host"}}'
   exit 0
 fi
 
-if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
-  jq -nc '{status:"failed", data:{error:"ANTHROPIC_API_KEY not set on claw"}}'
-  exit 0
-fi
-
-# Persist the payload so the enricher can pick up the targeted person_ids.
-# The v5 enricher currently loads its own targets via Postgres — future
-# revisions can read ORBIT_ENRICHER_TARGETS_JSON to honor the payload.
-export ORBIT_ENRICHER_TARGETS_JSON="${PAYLOAD}"
+BRIEF="Phase 5 living-orbit tick: enrich up to ${LIMIT} persons whose latest card has category='other'. Use orbit_persons_list_enriched to find them (skip canaries Umayr 67050b91-5011-4ba6-b230-9a387879717a and Ramon 9e7c0448-dd3b-437c-9cda-c512dbc5764b), orbit_messages_fetch per person (limit 30), ONE claude-sonnet-4-20250514 call for the whole batch, orbit_observation_bulk to write observations. Return JSON summary with {ok, status, batch_size, enriched, skipped_no_signal, inserted, deduped, category_shift, cost_usd}."
 
 START=$(date +%s)
-OUT="$(node "${ENRICHER_SCRIPT}" 2>&1)"
-STATUS=$?
+OUT="$(openclaw agent --agent main --json --timeout 1500 --message "Run the orbit-enricher skill. Brief: ${BRIEF}" 2>&1 || true)"
 END=$(date +%s)
 
-if [[ "${STATUS}" -eq 0 ]]; then
-  jq -nc --arg dur "$((END - START))" --arg stdout "${OUT}" \
-    '{status:"succeeded", data:{duration_sec:($dur|tonumber), log_tail:$stdout}}'
+if printf '%s' "${OUT}" | jq -e '.ok == true' >/dev/null 2>&1; then
+  jq -nc --arg dur "$((END - START))" --argjson raw "${OUT}" \
+    '{status:"succeeded", data:{duration_sec:($dur|tonumber), raw:$raw}}'
 else
-  jq -nc --arg dur "$((END - START))" --arg code "${STATUS}" --arg stdout "${OUT}" \
-    '{status:"failed", data:{duration_sec:($dur|tonumber), exit_code:($code|tonumber), log_tail:$stdout}}'
+  jq -nc --arg dur "$((END - START))" --arg raw "${OUT}" \
+    '{status:"failed", data:{duration_sec:($dur|tonumber), error:$raw}}'
 fi
