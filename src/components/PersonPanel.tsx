@@ -27,6 +27,16 @@ interface TopicChip {
   weight: number;
 }
 
+interface PersonSnapshot {
+  id: string;
+  pass_at: string;
+  pass_kind: "enricher" | "resolver" | "summary" | "correction";
+  diff_summary: string;
+  card_state: Record<string, unknown>;
+  evidence_pointer_ids: string[];
+  confidence_delta: Record<string, unknown>;
+}
+
 interface PersonData {
   profile: PersonProfile;
   interactions: Interaction[];
@@ -67,12 +77,22 @@ export default function PersonPanel({
   const [data, setData] = useState<PersonData | null>(null);
   const [topics, setTopics] = useState<TopicChip[]>([]);
   const [loading, setLoading] = useState(true);
+  const [evolutionOpen, setEvolutionOpen] = useState(false);
+  const [snapshots, setSnapshots] = useState<PersonSnapshot[] | null>(null);
+  const [snapshotsLoading, setSnapshotsLoading] = useState(false);
+  const [snapshotsError, setSnapshotsError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setData(null);
     setTopics([]);
+    // Reset evolution state on person change — a stale previous-person
+    // snapshot list would mislead on open.
+    setEvolutionOpen(false);
+    setSnapshots(null);
+    setSnapshotsLoading(false);
+    setSnapshotsError(null);
 
     const cardP = fetch(`/api/v1/person/${encodeURIComponent(personId)}/card`)
       .then((r) => (r.ok ? (r.json() as Promise<CardEnvelope>) : null))
@@ -136,6 +156,59 @@ export default function PersonPanel({
     }
   }
   const isGoingCold = daysSince !== null && daysSince > 14;
+
+  // Lazy-fetch snapshots when the Evolution section is opened. Keeps the
+  // card payload small on initial load — most opens don't need the stack.
+  async function toggleEvolution() {
+    const next = !evolutionOpen;
+    setEvolutionOpen(next);
+    if (next && snapshots === null && !snapshotsLoading) {
+      setSnapshotsLoading(true);
+      setSnapshotsError(null);
+      try {
+        const r = await fetch(
+          `/api/v1/person/${encodeURIComponent(personId)}/snapshots?limit=30`,
+        );
+        if (!r.ok) {
+          setSnapshotsError("could not load snapshots");
+          setSnapshotsLoading(false);
+          return;
+        }
+        const env = (await r.json()) as { snapshots?: PersonSnapshot[] };
+        setSnapshots(Array.isArray(env.snapshots) ? env.snapshots : []);
+      } catch {
+        setSnapshotsError("could not load snapshots");
+      } finally {
+        setSnapshotsLoading(false);
+      }
+    }
+  }
+
+  function formatPassAt(iso: string): string {
+    const ts = Date.parse(iso);
+    if (!Number.isFinite(ts)) return iso;
+    const d = new Date(ts);
+    const days = Math.floor((Date.now() - ts) / (1000 * 60 * 60 * 24));
+    if (days === 0) return "today";
+    if (days === 1) return "yesterday";
+    if (days < 7) return `${days}d ago`;
+    return d.toLocaleDateString();
+  }
+
+  function passKindBadgeStyle(kind: PersonSnapshot["pass_kind"]): string {
+    switch (kind) {
+      case "enricher":
+        return "border-sky-500/40 bg-sky-500/10 text-sky-300";
+      case "resolver":
+        return "border-violet-500/40 bg-violet-500/10 text-violet-300";
+      case "summary":
+        return "border-emerald-500/40 bg-emerald-500/10 text-emerald-300";
+      case "correction":
+        return "border-amber-500/40 bg-amber-500/10 text-amber-300";
+      default:
+        return "border-zinc-700 bg-zinc-900/60 text-zinc-300";
+    }
+  }
 
   return (
     <div className="h-full w-[380px] flex flex-col border-l border-zinc-800/40 bg-[#0c0c10]">
@@ -263,6 +336,70 @@ export default function PersonPanel({
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+
+          {/* Evolution — Phase 2 per-pass snapshot stack */}
+          <div className="px-4 py-4" data-testid="person-evolution">
+            <button
+              type="button"
+              onClick={toggleEvolution}
+              className="flex w-full items-center justify-between text-left text-[12px] font-medium text-zinc-400 uppercase tracking-wide hover:text-zinc-200 transition-colors"
+              aria-expanded={evolutionOpen}
+              aria-controls="evolution-stack"
+            >
+              <span>
+                Evolution
+                {snapshots !== null && ` (${snapshots.length} pass${snapshots.length === 1 ? "" : "es"})`}
+              </span>
+              <span className="text-[10px] text-zinc-600" aria-hidden>
+                {evolutionOpen ? "−" : "+"}
+              </span>
+            </button>
+
+            {evolutionOpen && (
+              <div id="evolution-stack" className="mt-3">
+                {snapshotsLoading && (
+                  <p className="text-[12px] text-zinc-600">loading…</p>
+                )}
+                {snapshotsError && !snapshotsLoading && (
+                  <p className="text-[12px] text-red-400/80">{snapshotsError}</p>
+                )}
+                {!snapshotsLoading && !snapshotsError && snapshots && snapshots.length === 0 && (
+                  <p className="text-[12px] text-zinc-600">
+                    No passes yet — snapshots land after each enricher / combiner run.
+                  </p>
+                )}
+                {!snapshotsLoading && !snapshotsError && snapshots && snapshots.length > 0 && (
+                  <ol className="space-y-3 max-h-[320px] overflow-y-auto">
+                    {snapshots.map((s) => (
+                      <li key={s.id} className="flex gap-2" data-testid="snapshot-row">
+                        <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-zinc-700 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 text-[11px] text-zinc-500">
+                            <span>{formatPassAt(s.pass_at)}</span>
+                            <span
+                              className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${passKindBadgeStyle(s.pass_kind)}`}
+                            >
+                              {s.pass_kind}
+                            </span>
+                            {s.evidence_pointer_ids.length > 0 && (
+                              <span className="text-zinc-600">
+                                · {s.evidence_pointer_ids.length} evidence
+                              </span>
+                            )}
+                          </div>
+                          {s.diff_summary && (
+                            <p className="text-[12px] text-zinc-400 mt-0.5 leading-relaxed break-words">
+                              {s.diff_summary}
+                            </p>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                )}
               </div>
             )}
           </div>

@@ -254,4 +254,94 @@ describe("assembleCard", () => {
     expect(card.observations.recent_corrections.length).toBe(10);
     expect(card.observations.total).toBe(45);
   });
+
+  // Phase 2: the assembler prefers a pass_kind='summary' snapshot over the
+  // observation-derived headline. Other fields (name/category/etc.) still
+  // come from observations — snapshots only override one_paragraph_summary.
+  it("uses summarySnapshot for one_paragraph_summary when provided", () => {
+    const rows: ObservationRow[] = [
+      obs({
+        kind: "person",
+        observed_at: "2026-04-10T00:00:00Z",
+        payload: {
+          name: "Poojan Vig",
+          category: "friend",
+          title: null,
+          relationship_to_me: "long-time friend",
+          phones: [],
+          emails: [],
+        },
+      }),
+      obs({
+        kind: "interaction",
+        observed_at: "2026-04-18T00:00:00Z",
+        payload: {
+          participants: ["Sanchay", "Poojan"],
+          channel: "whatsapp",
+          summary: "chatted about weekend plans",
+          topic: "personal",
+          relationship_context: "",
+          connection_context: "",
+          sentiment: "positive",
+        },
+      }),
+    ];
+
+    const summarySnapshot = {
+      id: "22222222-2222-4222-8222-222222222222",
+      person_id: personId,
+      pass_at: "2026-04-21T00:00:00Z",
+      pass_kind: "summary" as const,
+      card_state: { relationship_to_me: "your co-lead at Acme" },
+      evidence_pointer_ids: [],
+      diff_summary: "Conviction shifted: from friend → co-lead (weekly 1:1s)",
+      confidence_delta: {},
+      created_at: "2026-04-21T00:00:00Z",
+    };
+
+    const card = assembleCard(personId, rows, summarySnapshot);
+    // Headline is now the snapshot's — NOT the observation-derived fold.
+    expect(card.one_paragraph_summary).toContain("co-lead at Acme");
+    expect(card.one_paragraph_summary).toContain("weekly 1:1s");
+    // But the fold-level fields are still observation-derived.
+    expect(card.name).toBe("Poojan Vig");
+    expect(card.category).toBe("friend");
+    expect(card.relationship_to_me).toBe("long-time friend");
+  });
+
+  it("falls back to observation-derived summary when no snapshot provided", () => {
+    const rows: ObservationRow[] = [
+      obs({
+        kind: "person",
+        observed_at: "2026-04-10T00:00:00Z",
+        payload: {
+          name: "Poojan Vig",
+          category: "friend",
+          relationship_to_me: "long-time friend",
+          phones: [],
+          emails: [],
+        },
+      }),
+    ];
+    const card = assembleCard(personId, rows);
+    expect(card.one_paragraph_summary).toBe("long-time friend");
+  });
+
+  it("falls back to observation-derived summary when summarySnapshot is null", () => {
+    const rows: ObservationRow[] = [
+      obs({
+        kind: "person",
+        observed_at: "2026-04-10T00:00:00Z",
+        payload: {
+          name: "Poojan Vig",
+          category: "friend",
+          relationship_to_me: "long-time friend",
+          phones: [],
+          emails: [],
+        },
+      }),
+    ];
+    const card = assembleCard(personId, rows, null);
+    expect(card.one_paragraph_summary).toBe("long-time friend");
+  });
 });

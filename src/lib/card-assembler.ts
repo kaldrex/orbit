@@ -61,6 +61,24 @@ interface ObservationRef {
 }
 
 /**
+ * Per-pass card snapshot. Phase 2 — each enricher / resolver / summary /
+ * correction pass writes one of these into person_snapshots. When the
+ * card assembler sees a pass_kind='summary' snapshot, it prefers the
+ * snapshot's diff_summary as the headline paragraph.
+ */
+export interface PersonSnapshot {
+  id: string;
+  person_id: string;
+  pass_at: string;
+  pass_kind: "enricher" | "resolver" | "summary" | "correction";
+  card_state: Record<string, unknown>;
+  evidence_pointer_ids: string[];
+  diff_summary: string;
+  confidence_delta: Record<string, unknown>;
+  created_at: string;
+}
+
+/**
  * A row as it comes from the DB. We type it loosely here because the
  * DB row has extra columns (id, user_id, ingested_at, dedup_key) that
  * the zod schema doesn't — and the payload is `unknown` until we
@@ -94,10 +112,18 @@ export interface ObservationRow {
  *  5. last_touch = max observed_at across `kind:"interaction"` obs.
  *  6. one_paragraph_summary = latest person obs's relationship_to_me,
  *     plus (if space) the most recent interaction's summary.
+ *
+ * Phase 2: optional `summarySnapshot` — when present, the assembler
+ * prefers `snapshot.card_state.relationship_to_me` (fallback to the
+ * folded value) joined with `snapshot.diff_summary` as the headline
+ * `one_paragraph_summary`. Everything else (name, category, fold)
+ * still comes from observations — snapshots are a headline projection,
+ * not a replacement of the ledger.
  */
 export function assembleCard(
   personId: string,
   rows: ObservationRow[],
+  summarySnapshot?: PersonSnapshot | null,
 ): PersonCard {
   // Sort ascending for fold semantics.
   const sorted = [...rows].sort((a, b) => a.observed_at.localeCompare(b.observed_at));
@@ -192,18 +218,37 @@ export function assembleCard(
     // included (handled by the caller's filter).
   }
 
-  // The summary is the founder-facing one-liner. Prefer relationship_to_me
-  // as-is. Append the most recent interaction summary only if it adds real
-  // information (not a near-duplicate of relationship_to_me).
-  const recentInteraction = interactions.length
-    ? interactions[interactions.length - 1].summary
-    : "";
-  const parts: string[] = [];
-  if (relationship_to_me) parts.push(relationship_to_me);
-  if (recentInteraction && !isSimilar(relationship_to_me, recentInteraction)) {
-    parts.push(recentInteraction);
+  // The summary is the founder-facing one-liner. If a pass_kind='summary'
+  // snapshot is available, it wins: combiner SKILL wrote a concise
+  // human-readable relationship paragraph + a short diff note. Otherwise
+  // fall back to the observation-derived line (relationship_to_me plus
+  // the most recent interaction if it adds real info).
+  let one_paragraph_summary: string;
+  if (summarySnapshot) {
+    const snapRelationship =
+      typeof summarySnapshot.card_state?.relationship_to_me === "string"
+        ? (summarySnapshot.card_state.relationship_to_me as string)
+        : relationship_to_me;
+    const parts: string[] = [];
+    if (snapRelationship) parts.push(snapRelationship);
+    if (
+      summarySnapshot.diff_summary &&
+      !isSimilar(snapRelationship, summarySnapshot.diff_summary)
+    ) {
+      parts.push(summarySnapshot.diff_summary);
+    }
+    one_paragraph_summary = parts.join(" · ");
+  } else {
+    const recentInteraction = interactions.length
+      ? interactions[interactions.length - 1].summary
+      : "";
+    const parts: string[] = [];
+    if (relationship_to_me) parts.push(relationship_to_me);
+    if (recentInteraction && !isSimilar(relationship_to_me, recentInteraction)) {
+      parts.push(recentInteraction);
+    }
+    one_paragraph_summary = parts.join(" · ");
   }
-  const one_paragraph_summary = parts.join(" · ");
 
   return {
     person_id: personId,

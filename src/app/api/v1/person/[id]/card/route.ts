@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getAgentOrSessionAuth } from "@/lib/api-auth";
-import { assembleCard, type ObservationRow } from "@/lib/card-assembler";
+import {
+  assembleCard,
+  type ObservationRow,
+  type PersonSnapshot,
+} from "@/lib/card-assembler";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -37,20 +41,44 @@ export async function GET(
     (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "").trim(),
   );
 
-  // select_person_card_rows returns all identity rows (person +
-  // correction) plus the latest 500 interactions — shaped for the
-  // card-assembler and safely under PostgREST's 1000-row cap. See
-  // supabase/migrations/20260421_select_person_card_rows_rpc.sql.
-  const { data, error } = await supabase.rpc("select_person_card_rows", {
-    p_user_id: auth.userId,
-    p_person_id: id,
-  });
-  if (error) {
-    console.error("[person/card] rpc error", error);
+  // Parallel fetch:
+  //  (1) select_person_card_rows — identity + correction rows + latest 500
+  //      interactions. Under PostgREST's 1000-row cap. See
+  //      supabase/migrations/20260421_select_person_card_rows_rpc.sql.
+  //  (2) select_latest_summary_snapshot — Phase 2 per-pass snapshot
+  //      (pass_kind='summary'), used as a headline override by the
+  //      card-assembler when present. Non-fatal on error — falls back
+  //      to observation-derived headline.
+  const [cardRowsResult, summaryResult] = await Promise.all([
+    supabase.rpc("select_person_card_rows", {
+      p_user_id: auth.userId,
+      p_person_id: id,
+    }),
+    supabase.rpc("select_latest_summary_snapshot", {
+      p_user_id: auth.userId,
+      p_person_id: id,
+    }),
+  ]);
+
+  if (cardRowsResult.error) {
+    console.error("[person/card] rpc error", cardRowsResult.error);
     return NextResponse.json({ error: "read failed" }, { status: 502 });
   }
 
-  const rows = (Array.isArray(data) ? data : []) as ObservationRow[];
+  const rows = (Array.isArray(cardRowsResult.data)
+    ? cardRowsResult.data
+    : []) as ObservationRow[];
+
+  // Summary snapshot is optional — log and ignore errors, don't fail the card.
+  let summarySnapshot: PersonSnapshot | null = null;
+  if (summaryResult.error) {
+    console.warn(
+      "[person/card] summary snapshot rpc warn",
+      summaryResult.error.message,
+    );
+  } else if (Array.isArray(summaryResult.data) && summaryResult.data.length > 0) {
+    summarySnapshot = summaryResult.data[0] as PersonSnapshot;
+  }
 
   // Empty set could mean: (a) person doesn't exist, (b) person exists
   // but has no observations linked yet. Check persons table to
@@ -68,6 +96,6 @@ export async function GET(
     }
   }
 
-  const card = assembleCard(id, rows);
+  const card = assembleCard(id, rows, summarySnapshot);
   return NextResponse.json({ card });
 }
