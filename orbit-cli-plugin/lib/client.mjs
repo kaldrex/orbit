@@ -901,6 +901,7 @@ export async function orbitMessagesFetch(
   {
     person_id,
     limit = 200,
+    since,
     wacli_db,
     session_db,
     config,
@@ -914,7 +915,7 @@ export async function orbitMessagesFetch(
   if (!person_id || typeof person_id !== "string") {
     return invalidInputError(
       "person_id (string) is required",
-      "Pass {person_id: '<uuid>', limit?: 200}.",
+      "Pass {person_id: '<uuid>', limit?: 200, since?: <iso|unix_ms|unix_s>}.",
     );
   }
   if (!UUID_RE.test(person_id)) {
@@ -925,6 +926,18 @@ export async function orbitMessagesFetch(
       `limit=${limit} out of range (1..5000)`,
       "Pass limit between 1 and 5000.",
     );
+  }
+  // Normalize since → unix seconds (wacli.messages.ts is a Unix-seconds integer).
+  // Accept ISO strings, Unix ms (>10^10), Unix s, or null/undefined.
+  let sinceSec = 0;
+  if (since !== undefined && since !== null) {
+    if (typeof since === "number" && Number.isFinite(since)) {
+      sinceSec = since > 1e10 ? Math.floor(since / 1000) : Math.floor(since);
+    } else if (typeof since === "string") {
+      const ms = Date.parse(since);
+      if (Number.isFinite(ms)) sinceSec = Math.floor(ms / 1000);
+    }
+    if (sinceSec < 0) sinceSec = 0;
   }
   // Default paths: env override → ~/.wacli/wacli.db and ~/.wacli/session.db.
   const defaultWacli =
@@ -994,6 +1007,7 @@ export async function orbitMessagesFetch(
              chat_name
         FROM messages
        WHERE chat_jid = ?
+         AND ts >= ?
          AND COALESCE(NULLIF(text,''), NULLIF(display_text,''), NULLIF(media_caption,'')) IS NOT NULL
        ORDER BY ts DESC
        LIMIT ?
@@ -1004,6 +1018,7 @@ export async function orbitMessagesFetch(
         FROM messages m
        WHERE m.sender_jid = ?
          AND m.chat_jid LIKE '%@g.us'
+         AND m.ts >= ?
          AND COALESCE(NULLIF(m.text,''), NULLIF(m.display_text,''), NULLIF(m.media_caption,'')) IS NOT NULL
        ORDER BY m.ts DESC
        LIMIT ?
@@ -1012,7 +1027,7 @@ export async function orbitMessagesFetch(
       const digits = String(phone).replace(/\D+/g, "");
       if (!digits) continue;
       const dmJid = `${digits}@s.whatsapp.net`;
-      for (const m of dmStmt.all(dmJid, limit)) {
+      for (const m of dmStmt.all(dmJid, sinceSec, limit)) {
         if (!m.body) continue;
         const key = `${m.ts}|${String(m.body).slice(0, 40)}`;
         if (seen.has(key)) continue;
@@ -1026,7 +1041,7 @@ export async function orbitMessagesFetch(
       }
       const lid = phoneToLid.get(digits);
       if (lid) {
-        for (const m of grpByJid.all(`${lid}@lid`, limit)) {
+        for (const m of grpByJid.all(`${lid}@lid`, sinceSec, limit)) {
           if (!m.body) continue;
           const key = `${m.ts}|${String(m.body).slice(0, 40)}`;
           if (seen.has(key)) continue;
@@ -1039,7 +1054,7 @@ export async function orbitMessagesFetch(
         }
       }
       // Pre-LID era: groups where sender_jid is still the phone-JID.
-      for (const m of grpByJid.all(dmJid, limit)) {
+      for (const m of grpByJid.all(dmJid, sinceSec, limit)) {
         if (!m.body) continue;
         const key = `${m.ts}|${String(m.body).slice(0, 40)}`;
         if (seen.has(key)) continue;
@@ -1899,6 +1914,61 @@ export async function orbitPersonSnapshotsList(
   if (limit) qs.set("limit", String(limit));
   const q = qs.toString();
   const target = joinUrl(url, `/person/${person_id}/snapshots${q ? `?${q}` : ""}`);
+
+  let res;
+  try {
+    res = await fetchImpl(target, {
+      method: "GET",
+      headers: authHeaders(key),
+    });
+  } catch (e) {
+    return networkError(e);
+  }
+  const body = await readBody(res);
+  if (!res.ok) return httpError(res, body);
+  return body;
+}
+
+/**
+ * GET /persons/active-since?since=<iso>&needs_enrichment=<bool>
+ *
+ * Returns person_ids that have had observations or snapshots land since
+ * the given timestamp. With needs_enrichment=true, filters out persons
+ * with a fresh pass_kind='summary' snapshot (<7 days old).
+ *
+ * Powers the delta-bulk enricher. Pure Postgres — no LLM.
+ * Returns {persons: [{person_id, last_activity_at, activity_count}], total}.
+ */
+export async function orbitPersonsActiveSince(
+  { since, needs_enrichment = false } = {},
+  { config, fetchImpl = fetch } = {},
+) {
+  if (!since) {
+    return invalidInputError(
+      "since is required",
+      "Pass {since: '<ISO 8601 timestamp>'}.",
+    );
+  }
+
+  const cfg = config ?? resolveConfig();
+  const effective =
+    cfg && typeof cfg === "object" && "ok" in cfg
+      ? cfg.ok
+        ? cfg.config
+        : null
+      : cfg;
+  if (!effective) {
+    return invalidInputError(
+      "ORBIT_API_BASE / ORBIT_API_KEY must be set",
+      "Check the gateway env before calling orbit_persons_active_since.",
+    );
+  }
+  const { url, key } = effective;
+
+  const qs = new URLSearchParams();
+  qs.set("since", String(since));
+  if (needs_enrichment) qs.set("needs_enrichment", "true");
+  const target = joinUrl(url, `/persons/active-since?${qs.toString()}`);
 
   let res;
   try {

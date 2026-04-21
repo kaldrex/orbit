@@ -24,6 +24,7 @@ import {
   orbitInteractionsBackfill,
   orbitPersonSnapshotWrite,
   orbitPersonSnapshotsList,
+  orbitPersonsActiveSince,
 } from "./lib/client.mjs";
 import { resolveConfig } from "./lib/env.mjs";
 
@@ -256,6 +257,30 @@ export default definePluginEntry({
         required: ["person_id", "pass_kind"],
       },
       execute: withCfg(orbitPersonSnapshotWrite),
+    });
+
+    api.registerTool({
+      name: "orbit_persons_active_since",
+      description:
+        "GET /api/v1/persons/active-since?since=<iso>[&needs_enrichment=true]. Returns person_ids that have had observations or snapshots land since the given timestamp. Pure Postgres query — no LLM. When needs_enrichment=true, filters out persons with a fresh pass_kind='summary' snapshot (<7 days old). Used by the delta-bulk enricher to pick candidates. Returns {persons:[{person_id, last_activity_at, activity_count}], total}.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          since: {
+            type: "string",
+            description:
+              "ISO 8601 timestamp. Only persons with activity >= this time are returned.",
+          },
+          needs_enrichment: {
+            type: "boolean",
+            description:
+              "Default false. When true, drops persons with a fresh pass_kind='summary' snapshot (<7 days old). Useful for the combiner SKILL to avoid re-summarizing.",
+          },
+        },
+        required: ["since"],
+      },
+      execute: withCfg(orbitPersonsActiveSince),
     });
 
     api.registerTool({

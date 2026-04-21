@@ -28,7 +28,7 @@ set -u  # unset vars are errors, but we don't set -e — we want to
         # continue past dispatcher failures and report them back.
 
 AGENT_ID="${ORBIT_AGENT_ID:-wazowski}"
-KINDS_JSON='["observer","enricher","meeting_sync","topic_resonance"]'
+KINDS_JSON='["observer","enricher","enricher_delta","meeting_sync","topic_resonance"]'
 LOG_DIR="${ORBIT_JOB_RUNNER_LOG_DIR:-/home/sanchay/orbit-enrichment-logs/job-runner}"
 TICK_TAG="$(date -u +%Y%m%dT%H%M%SZ)"
 TICK_LOG="${LOG_DIR}/tick-${TICK_TAG}.log"

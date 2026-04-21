@@ -1,9 +1,9 @@
 {
   "name": "orbit-cli",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "type": "module",
   "main": "index.js",
-  "description": "Plumbing-only OpenClaw plugin that wraps Orbit's HTTP API + claw-side fetchers. 21 verbs covering observations, persons, per-pass snapshots, meetings, topics, calendar/messages fetch, jobs, and onboarding backfill (raw_events, lid bridge, interactions). No LLM, no classification — transport only. Observer/resolver/brief/topic/backfill/combiner SKILLs own all interpretation.",
+  "description": "Plumbing-only OpenClaw plugin that wraps Orbit's HTTP API + claw-side fetchers. 22 verbs covering observations, persons, per-pass snapshots, active-since selection, meetings, topics, calendar/messages fetch (with since), jobs, and onboarding backfill. No LLM, no classification — transport only. Observer/resolver/brief/topic/backfill/combiner/delta-enricher SKILLs own all interpretation.",
   "private": true,
   "engines": {
     "node": ">=20"
