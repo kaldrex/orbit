@@ -15,7 +15,7 @@ fi
 BRIEF="Run orbit-topic-resonance SKILL with payload: ${PAYLOAD}. For each person_id, fetch recent messages via orbit_messages_fetch, infer topic weights, upsert via orbit_topics_upsert."
 
 START=$(date +%s)
-OUT="$(openclaw run --skill orbit-topic-resonance --prompt "${BRIEF}" --json 2>&1 || true)"
+OUT="$(openclaw agent --agent main --json --timeout 1200 --message "Run the orbit-topic-resonance skill. Brief: ${BRIEF}" 2>&1 || true)"
 END=$(date +%s)
 
 if printf '%s' "${OUT}" | jq -e '.ok == true' >/dev/null 2>&1; then

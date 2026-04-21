@@ -29,7 +29,7 @@ fi
 BRIEF="Phase 5 living-orbit tick. Scan WhatsApp + Gmail for any human with activity since ${SINCE:-epoch}. Emit person + interaction observations via orbit_observation_emit. Do not re-enrich Umayr (67050b91-5011-4ba6-b230-9a387879717a) — he is the canary."
 
 START=$(date +%s)
-OUT="$(openclaw run --skill orbit-observer --prompt "${BRIEF}" --json 2>&1 || true)"
+OUT="$(openclaw agent --agent main --json --timeout 1200 --message "Run the orbit-observer skill. Brief: ${BRIEF}" 2>&1 || true)"
 END=$(date +%s)
 
 if printf '%s' "${OUT}" | jq -e '.ok == true' >/dev/null 2>&1; then
