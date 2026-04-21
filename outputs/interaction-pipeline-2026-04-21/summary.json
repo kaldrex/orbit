@@ -1,0 +1,23 @@
+{
+  "run_id": "interaction-pipeline-2026-04-21T02-50-02",
+  "phase": "done",
+  "batches_total": 118,
+  "batches_completed": 118,
+  "batches_quarantined": 0,
+  "plans_total": 11755,
+  "raw_events_scanned": 33105,
+  "skip_reasons": {
+    "group_msg": 17890,
+    "no_phone": 2329,
+    "no_msg_kind": 0,
+    "phone_not_normalizable": 2,
+    "self_phone": 226,
+    "unresolved_phone": 903
+  },
+  "interactions_inserted": 8155,
+  "interactions_deduped": 3600,
+  "merges_inserted": 8255,
+  "merges_deduped": 3500,
+  "missing_ids_after_post": 0,
+  "wall_minutes": 1.6
+}

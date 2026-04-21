@@ -542,3 +542,49 @@ Artifacts:
 - `upsert_capability_report(p_user_id uuid, p_agent_id text, p_hostname text, p_channels jsonb, p_data_sources jsonb, p_tools jsonb) RETURNS timestamptz`.
 
 **Rollback:** `DROP FUNCTION mint_api_key, validate_api_key, select_capability_reports, upsert_capability_report; DROP TABLE capability_reports; ALTER TABLE api_keys DROP COLUMN revoked_at, last_used_at; rename prefix back to key_prefix;` plus `git checkout src/app/api/v1/keys src/app/api/v1/capabilities src/lib/neo4j.ts src/app/onboarding/OnboardingClient.tsx`. The two pre-existing rows in `api_keys` (`Wazowski Test`, `Wazowski Connector`) would persist under the legacy schema.
+
+---
+
+## 2026-04-21 — Phase 1 wire + interaction pipeline + card-row RPC
+
+**Claim:** "The dashboard scaffolding now talks to V1 routes only. 11,755 `kind:\"interaction\"` + 8,255 `kind:\"merge\"` observations were derived deterministically from `raw_events` (WhatsApp only, no LLM spend). `/api/v1/person/:id/card` now serves a targeted identity-prioritizing RPC so a person with thousands of interactions keeps all identity-bearing rows in the assembler's input. Umayr canary core fields SAME vs April-19 baseline."
+
+**Investigation.**
+Frontend rewires (inline):
+- `Dashboard.tsx` — deleted the `/api/init` `useEffect`; `selfNodeId` is now a direct prop read from the page. The `/api/graph` stats fetch stays (silent no-op until Phase 2 lights it up).
+- `PersonPanel.tsx` — swapped to `/api/v1/person/:id/card`, added a `CardEnvelope` unwrap, mapped card fields into the existing `PersonProfile`/`Interaction` UI shape. `sharedConnections: []` until Phase 3 ships the graph neighbors endpoint.
+- `AddContactDialog.tsx` — both single and CSV flows now POST `kind:"person"` observations to `/api/v1/observations`, batched 100 per request. **Flagged debt:** without a follow-up `kind:"merge"` (which requires ≥ 2 observation IDs per current schema), the new observation doesn't materialize into `persons` — tracked in `project_tracked_debt_2026_04_20.md`.
+
+Pipeline (subagent):
+- `scripts/build-interactions-from-raw-events.mjs` built on top of `scripts/lib/resilient-worker.mjs`. For every WhatsApp `raw_event`: resolve sender to `person_id` via phone + LID bridge, emit `kind:"interaction"` (participants, channel, summary from body_preview + direction, topic `business` default, sentiment `neutral`) + `kind:"merge"` (using the `merged_observation_ids=[iid, iid]` workaround to satisfy the `.min(2)` schema quirk). Full run: 118 batches of 100, elapsed 1m 36s, $0.00. Agent stalled mid-run at batch 35 (watchdog, not script); resume completed cleanly from progress.json.
+
+Post-pipeline regression discovered + fixed (same commit):
+- `/api/v1/person/:id/card` was returning all-null fields for Umayr (6,750+ observations). Root cause: Supabase/PostgREST default `db-max-rows` truncation of `select_person_observations` at 1000 rows — identity-bearing rows (person/correction) got cut out and `assembleCard` folded over old interactions only.
+- Fix: new `select_person_card_rows` RPC that returns all identity rows + the latest 500 interactions, ordered ASC. Applied to live Supabase. Route rewritten to call it.
+- `select_person_observations` is unchanged and still serves any existing callers.
+
+**Result:** PASS — verification checks all green.
+
+| # | Check | Result |
+|---|---|---|
+| a | `npm test` | 24 files, 386 passed + 1 skipped, 0 failures |
+| b | `SELECT kind, COUNT(*) FROM observations WHERE user_id=<sanchay>` | interaction 11,762 · merge 13,360 · person 4,646 · correction 1 |
+| c | Meet card (`24e45dc3-…`) | `last_touch: 2026-04-15`, 20 interactions shown, total 187 |
+| d | Umayr card (`67050b91-…`) | `name=Umayr Sheik, category=team, company=SinX Solutions, title=Founder`, `relationship_to_me` matches baseline, `last_touch: 2026-04-16`, total 503 |
+| e | Umayr canary vs `outputs/verification/2026-04-19-umayr-v0/card.json` | **SAME across all 5 core fields** |
+| f | Pipeline progress | `phase: done, 118/118, 11,755 outputs, 0 quarantined` |
+
+**Evidence:**
+- `scripts/build-interactions-from-raw-events.mjs` (~630 lines).
+- `supabase/migrations/20260421_select_person_card_rows_rpc.sql` (60 lines, applied).
+- `src/app/api/v1/person/[id]/card/route.ts` — swapped RPC name to `select_person_card_rows`.
+- `src/components/{Dashboard,PersonPanel,AddContactDialog}.tsx` — rewires per above.
+- `outputs/interaction-pipeline-2026-04-21/{progress.json, run.log, summary.json}`.
+
+**Known gotchas carried into Phase 2:**
+1. `/api/v1/persons/enriched` likely hits the same 1000-row cap (returned exactly 1000 earlier vs. docs' 1600). Phase 2 Neo4j populate should read direct-DB; won't care. List UI in Phase 1 is acceptable at 1000; fix via a similar aggregating RPC during Phase 2 or 3.
+2. `AddContactDialog` writes observations that don't materialize. Fix is the `merge.min(2)` schema quirk — deferred.
+3. `PersonPanel.sharedConnections` hardcoded to `[]` until Phase 3's `/graph/neighbors` route.
+4. `last_touch` is now populated from real WhatsApp timestamps; this CHANGES the value surfaced to UI for every person with DMs — no card-schema drift, but any UI comparison against a pre-pipeline snapshot will show `last_touch` changes. Not a regression.
+
+**Rollback:** `DROP FUNCTION select_person_card_rows;` + revert the 4 TS files + `DELETE FROM observations WHERE kind IN ('interaction','merge') AND created_at > '2026-04-21'` (cleans the 11,755+ new rows). Persons table + RLS untouched.

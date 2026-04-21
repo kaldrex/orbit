@@ -45,29 +45,21 @@ export function Dashboard({ user }: DashboardProps) {
   const supabase = createClient();
   const [activeFilter, setActiveFilter] = useState("All");
   const [selectedPerson, setSelectedPerson] = useState<string | null>(null);
-  const [selfNodeId, setSelfNodeId] = useState(user.selfNodeId);
+  const selfNodeId = user.selfNodeId;
   const [stats, setStats] = useState({ totalPeople: 0, goingCold: 0 });
   const [showAddContact, setShowAddContact] = useState(false);
   const [graphKey, setGraphKey] = useState(0);
   const [isDark, setIsDark] = useState(true);
 
-  // Init self-node if needed
-  useEffect(() => {
-    if (selfNodeId) return;
-    fetch("/api/init", { method: "POST" })
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.selfNodeId) setSelfNodeId(d.selfNodeId);
-      })
-      .catch(() => {});
-  }, [selfNodeId]);
-
-  // Fetch stats
+  // /api/graph lights up in Phase 2 once Neo4j is populated — until then
+  // stats stay at 0/0 and the fetch no-ops. selfNodeId comes from the
+  // profile (pre-V0 Neo4j concept); if absent, the graph canvas shows
+  // "Initializing..." which is correct behavior while Neo4j is empty.
   useEffect(() => {
     fetch("/api/graph")
-      .then((r) => r.json())
+      .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (d.stats) setStats({ totalPeople: d.stats.totalPeople ?? 0, goingCold: d.stats.goingCold ?? 0 });
+        if (d?.stats) setStats({ totalPeople: d.stats.totalPeople ?? 0, goingCold: d.stats.goingCold ?? 0 });
       })
       .catch(() => {});
   }, []);

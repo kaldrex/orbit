@@ -34,6 +34,31 @@ interface PersonData {
   sharedConnections: SharedConnection[];
 }
 
+interface CardEnvelope {
+  card: {
+    person_id: string;
+    name: string | null;
+    company: string | null;
+    title: string | null;
+    category: string | null;
+    phones: string[];
+    emails: string[];
+    relationship_to_me: string;
+    last_touch: string | null;
+    one_paragraph_summary: string;
+    observations: {
+      interactions: Array<{
+        channel?: string | null;
+        observed_at?: string | null;
+        summary?: string | null;
+        topic?: string | null;
+      }>;
+      recent_corrections: unknown[];
+      total: number;
+    };
+  };
+}
+
 export default function PersonPanel({
   personId,
   onClose,
@@ -50,11 +75,31 @@ export default function PersonPanel({
     let cancelled = false;
     setLoading(true);
     setData(null);
-    fetch(`/api/person/${encodeURIComponent(personId)}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (cancelled) return;
-        setData(d);
+    fetch(`/api/v1/person/${encodeURIComponent(personId)}/card`)
+      .then((r) => (r.ok ? (r.json() as Promise<CardEnvelope>) : null))
+      .then((env) => {
+        if (cancelled || !env?.card) { setLoading(false); return; }
+        const c = env.card;
+        setData({
+          profile: {
+            id: c.person_id,
+            name: c.name,
+            company: c.company,
+            title: c.title,
+            email: c.emails[0] ?? null,
+            score: 5,
+            category: c.category,
+            lastInteractionAt: c.last_touch,
+          },
+          interactions: (c.observations.interactions ?? []).map((i) => ({
+            channel: i.channel ?? null,
+            timestamp: i.observed_at ?? null,
+            direction: null,
+            summary: i.summary ?? null,
+            topic_summary: i.topic ?? null,
+          })),
+          sharedConnections: [],
+        });
         setLoading(false);
       })
       .catch(() => {

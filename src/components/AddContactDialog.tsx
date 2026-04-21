@@ -6,10 +6,38 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
+// Matches PERSON_CATEGORIES in src/lib/observations-schema.ts.
 const CATEGORIES = [
   "team", "investor", "sponsor", "fellow", "media",
-  "community", "gov", "founder", "friend", "press", "other",
+  "community", "founder", "friend", "press", "other",
 ];
+
+function makePersonObservation(input: {
+  name: string;
+  company?: string;
+  email?: string;
+  category?: string;
+}) {
+  const now = new Date().toISOString();
+  const emails = input.email?.trim() ? [input.email.trim().toLowerCase()] : [];
+  return {
+    kind: "person" as const,
+    observed_at: now,
+    observer: "wazowski" as const,
+    evidence_pointer: `manual://dashboard/add-contact/${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    confidence: 1.0,
+    reasoning: "Manual entry via Dashboard Add Contact dialog.",
+    payload: {
+      name: input.name.trim(),
+      company: input.company?.trim() || null,
+      category: (input.category || "other"),
+      title: null,
+      relationship_to_me: "",
+      phones: [],
+      emails,
+    },
+  };
+}
 
 interface AddContactDialogProps {
   open: boolean;
@@ -35,10 +63,12 @@ export default function AddContactDialog({ open, onClose, onAdded }: AddContactD
     setLoading(true);
     setResult(null);
 
-    const res = await fetch("/api/contacts", {
+    const res = await fetch("/api/v1/observations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, company, email, category, score: 3 }),
+      body: JSON.stringify({
+        observations: [makePersonObservation({ name, company, email, category })],
+      }),
     });
 
     if (res.ok) {
@@ -46,12 +76,12 @@ export default function AddContactDialog({ open, onClose, onAdded }: AddContactD
       setCompany("");
       setEmail("");
       setCategory("other");
-      setResult("Contact added");
+      setResult("Contact recorded");
       onAdded();
       setTimeout(() => { setResult(null); onClose(); }, 800);
     } else {
-      const d = await res.json();
-      setResult(d.error || "Failed");
+      const d = await res.json().catch(() => ({}));
+      setResult(d?.error?.message || d?.error || "Failed");
     }
     setLoading(false);
   }
@@ -82,22 +112,33 @@ export default function AddContactDialog({ open, onClose, onAdded }: AddContactD
       return;
     }
 
-    const res = await fetch("/api/contacts", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contacts }),
-    });
-
-    if (res.ok) {
-      const d = await res.json();
-      setResult(`${d.created} contacts imported`);
-      setCsvText("");
-      onAdded();
-      setTimeout(() => { setResult(null); onClose(); }, 1200);
-    } else {
-      const d = await res.json();
-      setResult(d.error || "Import failed");
+    // /api/v1/observations caps the batch at 100 per POST.
+    const observations = contacts.map(makePersonObservation);
+    const chunks: typeof observations[] = [];
+    for (let i = 0; i < observations.length; i += 100) {
+      chunks.push(observations.slice(i, i + 100));
     }
+
+    let created = 0;
+    for (const batch of chunks) {
+      const res = await fetch("/api/v1/observations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ observations: batch }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setResult(d?.error?.message || d?.error || "Import failed");
+        setLoading(false);
+        return;
+      }
+      created += batch.length;
+    }
+
+    setResult(`${created} contacts recorded`);
+    setCsvText("");
+    onAdded();
+    setTimeout(() => { setResult(null); onClose(); }, 1200);
     setLoading(false);
   }
 

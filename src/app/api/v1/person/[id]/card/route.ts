@@ -37,7 +37,11 @@ export async function GET(
     (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "").trim(),
   );
 
-  const { data, error } = await supabase.rpc("select_person_observations", {
+  // select_person_card_rows returns all identity rows (person +
+  // correction) plus the latest 500 interactions — shaped for the
+  // card-assembler and safely under PostgREST's 1000-row cap. See
+  // supabase/migrations/20260421_select_person_card_rows_rpc.sql.
+  const { data, error } = await supabase.rpc("select_person_card_rows", {
     p_user_id: auth.userId,
     p_person_id: id,
   });
