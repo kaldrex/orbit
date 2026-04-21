@@ -57,3 +57,11 @@ orbit-cli-plugin/node_modules
 outputs/**/node_modules/
 outputs/**/pre-wipe-*.ndjson
 outputs/**/pg-dump-*.sql
+
+# 2026-04-22: stripped from history (contained secrets — do NOT re-add)
+openclaw-snapshot/
+outputs/stage-6-v3-*/
+outputs/verification/2026-04-18-track2/
+tests/fixtures/session-minimal.db
+tests/fixtures/wacli-minimal.db
+outputs/provisioning/
