@@ -5,9 +5,18 @@ import type { NextRequest } from "next/server";
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next();
 
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  // Defensive: if env isn't bundled at build time (edge runtime quirk),
+  // skip auth check rather than 500 the whole site.
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return response;
+  }
+
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseUrl,
+    supabaseAnonKey,
     {
       cookies: {
         getAll: () =>
