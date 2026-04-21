@@ -15,6 +15,10 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import PersonPanel from "@/components/PersonPanel";
 import AddContactDialog from "@/components/AddContactDialog";
+import IntroPathSearch, { type PathState } from "@/components/graph/IntroPathSearch";
+import PathStrip from "@/components/graph/PathStrip";
+import CommunityToggle from "@/components/graph/CommunityToggle";
+import { useGraphIntelligence } from "@/components/graph/useGraphIntelligence";
 
 // Reagraph uses WebGL — must be client-only, no SSR
 const GraphCanvas = dynamic(() => import("@/components/graph/GraphCanvas"), {
@@ -50,6 +54,9 @@ export function Dashboard({ user }: DashboardProps) {
   const [showAddContact, setShowAddContact] = useState(false);
   const [graphKey, setGraphKey] = useState(0);
   const [isDark, setIsDark] = useState(true);
+  const [communityView, setCommunityView] = useState(false);
+  const [pathState, setPathState] = useState<PathState>({ kind: "idle" });
+  const intel = useGraphIntelligence();
 
   // /api/v1/graph returns empty arrays + zero stats until Neo4j is
   // populated (the route degrades gracefully to HTTP 200). Once populate
@@ -102,6 +109,24 @@ export function Dashboard({ user }: DashboardProps) {
               </button>
             ))}
           </div>
+
+          {/* Community-view toggle — relies on /graph/communities. */}
+          <CommunityToggle
+            on={communityView}
+            onToggle={() => setCommunityView((v) => !v)}
+            componentCount={intel.componentCount}
+            unavailable={intel.unavailable}
+            isDark={isDark}
+          />
+
+          {/* Intro-path type-ahead — relies on /graph/path. */}
+          {selfNodeId && (
+            <IntroPathSearch
+              selfId={selfNodeId}
+              isDark={isDark}
+              onStateChange={setPathState}
+            />
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -158,12 +183,20 @@ export function Dashboard({ user }: DashboardProps) {
               activeFilter={activeFilter}
               selfNodeId={selfNodeId}
               isDark={isDark}
+              communityColor={communityView ? intel.communityColor : null}
+              hubScore={intel.hubScore}
             />
           ) : (
             <div className="h-full flex items-center justify-center text-zinc-500 text-sm">
               Initializing...
             </div>
           )}
+
+          <PathStrip
+            state={pathState}
+            isDark={isDark}
+            onDismiss={() => setPathState({ kind: "idle" })}
+          />
         </div>
 
         {/* PersonPanel */}

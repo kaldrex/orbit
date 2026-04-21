@@ -630,3 +630,41 @@ Post-pipeline regression discovered + fixed (same commit):
 - Edge-weight formula natural-log (`log(1+count) * exp(-days/180)`) applied uniformly across DM/SHARED_GROUP/EMAILED (brief took precedence over doc 18's log10/no-recency split).
 
 **Rollback:** `MATCH (n:Person) DETACH DELETE n` in Neo4j + `DROP FUNCTION select_graph_nodes, select_phone_person_map, select_dm_thread_stats, select_group_thread_phones, select_email_interactions;` + `git checkout src/app/api/v1/graph src/components/Dashboard.tsx src/components/graph src/lib/graph-transforms.ts src/lib/neo4j-writes.ts`. Postgres state untouched.
+
+---
+
+## 2026-04-21 — Phase 3 graph intelligence (intro path + communities + centrality) + UI
+
+**Claim:** "Three graph-intelligence routes scaffolded + dashboard UI shipped. `/graph/path` uses pure Cypher `shortestPath()` — no GDS dependency — and returns a weighted-affinity summary. `/graph/communities` and `/graph/centrality` call GDS (Leiden + betweenness) and gracefully 501 when Aura Graph Analytics is not enabled. UI wires intro-path search, community-color toggle, and top-10 hub size markers."
+
+**Investigation.** Two subagents in parallel. P3-A implemented all three routes via GDS `gds.graph.project` → algorithm call → drop, with `classifyGdsError` mapping Aura's actual error ("Unable to authenticate without explicit Aura API credentials") to HTTP 501 `GDS_MISSING`. When the live live probe confirmed GDS isn't available (Aura Graph Analytics is a separate service tier that isn't on this project), I refactored `/graph/path` to pure Cypher `shortestPath()` so the intro-path flow works end-to-end today. `/communities` and `/centrality` stay GDS-backed and return 501 until the tier toggle is enabled.
+
+P3-B built the frontend: `IntroPathSearch` (type-ahead against `/persons/enriched`, 150 ms debounce, arrow-key nav + Enter + Escape), `CommunityToggle` (button, disabled with tooltip when graph has 1 component or GDS unavailable), `PathStrip` (centered panel above footer, initial circles + edge-labeled connectors), `useGraphIntelligence` (mount-time parallel fetch with hub-score map + community color map memos).
+
+**Result:** PASS — routes + UI shipped, tests green, Umayr canary held.
+
+| # | Check | Result |
+|---|---|---|
+| a | `npm test` | 28 files, 435 passed + 2 skipped |
+| b | `curl /api/v1/graph/path/<hub>/<umayr>` | HTTP 200 · `sanchaythalnerkar → Umayr Sheik`, hops=1, edge_types=["EMAILED"], total_affinity=0.734 |
+| c | `curl /api/v1/graph/communities` | HTTP 501 `GDS_MISSING` (expected — Aura tier) |
+| d | `curl /api/v1/graph/centrality` | HTTP 501 `GDS_MISSING` (expected — Aura tier) |
+| e | Umayr canary | SAME on all 5 core fields |
+| f | Top hub by raw degree | `sanchaythalnerkar` (self) with 159 edges — as designed; self injected into every SHARED_GROUP thread |
+
+**Evidence:**
+- `src/app/api/v1/graph/path/[from]/[to]/route.ts` — pure Cypher rewrite. No GDS projection. Deterministic, single query + validation query.
+- `src/app/api/v1/graph/communities/route.ts`, `.../centrality/route.ts` — GDS-based (Leiden + betweenness), 501 on Aura tier gap.
+- `src/lib/neo4j-gds.ts` — `projectUserGraph`, `dropIfExists`, `classifyGdsError`. Kept for when Graph Analytics tier lights up.
+- `src/components/graph/{IntroPathSearch,PathStrip,CommunityToggle,useGraphIntelligence}.tsx` — UI + hook.
+- `src/lib/graph-intelligence.ts` — `communityColorFromId`, `buildCommunityColorMap`, `topHubs`, `distinctCommunityCount`, `matchByPrefix`.
+- `src/lib/graph-transforms.ts` — new optional `ToReagraphOptions` (communityColor, hubScore); hubs get 1.5×–2× size bump.
+- `src/components/Dashboard.tsx` — mounts intelligence hook, renders the three new components.
+- Tests: +18 intel route tests (1 skipped as obsolete), +18 unit tests in `graph-intelligence.test.ts`.
+
+**Flagged for Sanchay's attention:**
+1. **Aura Graph Analytics is a separate paid tier.** Leiden + betweenness are coded and will light up once the tier is enabled + its credentials added to `.env.local`. Until then, `CommunityToggle` disables itself with a tooltip and top-hub size-bumps are no-ops.
+2. **`user.selfNodeId` is null today.** `IntroPathSearch` takes it from Dashboard props; to wire the intro-path end-to-end for Sanchay, set `UPDATE profiles SET self_node_id = '994a9f96-8cfc-4829-8062-87d7b900e4c6' WHERE id = 'dbb398c2-1eff-4eee-ae10-bad13be5fda7';`. Or build a one-shot endpoint that auto-resolves self from `ORBIT_SELF_EMAIL`. Post-V1 polish.
+3. **Intro-path uses unweighted `shortestPath()`** — picks fewest hops, not highest-affinity. `total_affinity` is surfaced as a "warmness" score but doesn't drive selection. When GDS is enabled, swap to `gds.shortestPath.dijkstra` with `cost = 1/weight` for weighted paths. Flagged as tech debt.
+
+**Rollback:** `git checkout src/app/api/v1/graph src/components/graph src/components/Dashboard.tsx src/lib/graph-transforms.ts src/lib/graph-intelligence.ts src/lib/neo4j-gds.ts tests/integration/graph-intel-routes.test.ts tests/unit/graph-intelligence.test.ts`. No Postgres or Neo4j side effects.

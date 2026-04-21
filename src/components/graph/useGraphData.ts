@@ -13,10 +13,18 @@ import {
 
 const MAX_RENDERED_NODES = 20; // TEMP: testing if small graphs render
 
+export interface GraphDataOverlays {
+  /** Per-person override fill (community-view). */
+  communityColor?: Record<string, string> | null;
+  /** Per-person 0..1 hub score used for size bump + ring markers. */
+  hubScore?: Map<string, number> | null;
+}
+
 export function useGraphData(
   activeFilter: string,
   selfNodeId: string,
-  showSelfEdges: boolean = false
+  showSelfEdges: boolean = false,
+  overlays: GraphDataOverlays = {},
 ) {
   const [raw, setRaw] = useState<ApiGraphData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,10 +48,15 @@ export function useGraphData(
     return () => { cancelled = true; };
   }, []);
 
+  const { communityColor, hubScore } = overlays;
+
   const { nodes, edges } = useMemo<{ nodes: ReagraphNode[]; edges: ReagraphEdge[] }>(() => {
     if (!raw) return { nodes: [], edges: [] };
 
-    const allNodes = toReagraphNodes(raw.nodes, selfNodeId);
+    const allNodes = toReagraphNodes(raw.nodes, selfNodeId, {
+      communityColor: communityColor ?? null,
+      hubScore: hubScore ?? null,
+    });
     const prunedLinks = showSelfEdges
       ? raw.links
       : raw.links.filter((l) => l.type === "knows" || (l.weight ?? 0) >= 1);
@@ -63,9 +76,8 @@ export function useGraphData(
 
     const keep = new Set(filtered.map((n) => n.id));
     const filteredEdges = filterEdgesByNodes(allEdges, keep);
-    console.log("[orbit-debug] nodes:", filtered.length, "edges:", filteredEdges.length, "sample node:", filtered[0]);
     return { nodes: filtered, edges: filteredEdges };
-  }, [raw, activeFilter, selfNodeId, showSelfEdges]);
+  }, [raw, activeFilter, selfNodeId, showSelfEdges, communityColor, hubScore]);
 
   return { nodes, edges, loading, error, rawStats: raw?.stats };
 }

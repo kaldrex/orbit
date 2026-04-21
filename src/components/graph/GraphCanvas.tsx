@@ -21,6 +21,10 @@ interface GraphCanvasProps {
   activeFilter: string;
   selfNodeId: string;
   isDark?: boolean;
+  /** When non-null, overrides node fill per personId (community view). */
+  communityColor?: Record<string, string> | null;
+  /** personId → 0..1 hub score; drives the size bump on top-10 connectors. */
+  hubScore?: Map<string, number> | null;
 }
 
 function resolveLayoutType(key: LayoutKey): LayoutTypes {
@@ -37,6 +41,8 @@ export default function GraphCanvas({
   activeFilter,
   selfNodeId,
   isDark = true,
+  communityColor = null,
+  hubScore = null,
 }: GraphCanvasProps) {
   const graphRef = useRef<GraphCanvasRef | null>(null);
   const [layout, setLayout] = useState<LayoutKey>("forceDirected");
@@ -46,7 +52,12 @@ export default function GraphCanvas({
     node: null, x: 0, y: 0,
   });
 
-  const { nodes, edges, loading, error } = useGraphData(activeFilter, selfNodeId);
+  const { nodes, edges, loading, error } = useGraphData(
+    activeFilter,
+    selfNodeId,
+    false,
+    { communityColor, hubScore },
+  );
   const [contextLost, setContextLost] = useState(false);
 
   // Recover from WebGL context loss

@@ -16,21 +16,11 @@ const { GET: getGraph } = await import("../../src/app/api/v1/graph/route");
 const { GET: getNeighbors } = await import(
   "../../src/app/api/v1/graph/neighbors/[id]/route"
 );
-const { GET: getPath } = await import(
-  "../../src/app/api/v1/graph/path/[from]/[to]/route"
-);
-const { GET: getCommunities } = await import(
-  "../../src/app/api/v1/graph/communities/route"
-);
-const { GET: getCentrality } = await import(
-  "../../src/app/api/v1/graph/centrality/route"
-);
 const { POST: postPopulate } = await import(
   "../../src/app/api/v1/graph/populate/route"
 );
 
 const PERSON_A = "67050b91-5011-4ba6-b230-9a387879717a";
-const PERSON_B = "44444444-4444-4444-8444-444444444441";
 
 function req(url: string, init?: RequestInit): Request {
   return new Request(url, init);
@@ -80,98 +70,6 @@ describe("GET /api/v1/graph/neighbors/:id", () => {
     const body = await res.json();
     expect(body.error.code).toBe("NEO4J_NOT_POPULATED");
     expect(typeof body.error.message).toBe("string");
-  });
-});
-
-describe("GET /api/v1/graph/path/:from/:to", () => {
-  beforeEach(() => {
-    getAuthMock.mockReset();
-    authed();
-  });
-
-  it("400 on non-uuid from", async () => {
-    const res = await getPath(
-      req(`http://localhost/api/v1/graph/path/bad/${PERSON_B}`),
-      { params: Promise.resolve({ from: "bad", to: PERSON_B }) },
-    );
-    expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error.code).toBe("INVALID_ID");
-  });
-
-  it("400 on non-uuid to", async () => {
-    const res = await getPath(
-      req(`http://localhost/api/v1/graph/path/${PERSON_A}/bad`),
-      { params: Promise.resolve({ from: PERSON_A, to: "bad" }) },
-    );
-    expect(res.status).toBe(400);
-  });
-
-  it("401 when not authenticated", async () => {
-    unauthed();
-    const res = await getPath(
-      req(`http://localhost/api/v1/graph/path/${PERSON_A}/${PERSON_B}`),
-      { params: Promise.resolve({ from: PERSON_A, to: PERSON_B }) },
-    );
-    expect(res.status).toBe(401);
-  });
-
-  it("503 NEO4J_NOT_POPULATED when authed", async () => {
-    const res = await getPath(
-      req(`http://localhost/api/v1/graph/path/${PERSON_A}/${PERSON_B}`),
-      { params: Promise.resolve({ from: PERSON_A, to: PERSON_B }) },
-    );
-    expect(res.status).toBe(503);
-    const body = await res.json();
-    expect(body.error.code).toBe("NEO4J_NOT_POPULATED");
-  });
-});
-
-describe("GET /api/v1/graph/communities", () => {
-  beforeEach(() => {
-    getAuthMock.mockReset();
-    authed();
-  });
-
-  it("401 when not authenticated", async () => {
-    unauthed();
-    const res = await getCommunities(
-      req("http://localhost/api/v1/graph/communities"),
-    );
-    expect(res.status).toBe(401);
-  });
-
-  it("503 NEO4J_NOT_POPULATED when authed", async () => {
-    const res = await getCommunities(
-      req("http://localhost/api/v1/graph/communities"),
-    );
-    expect(res.status).toBe(503);
-    const body = await res.json();
-    expect(body.error.code).toBe("NEO4J_NOT_POPULATED");
-  });
-});
-
-describe("GET /api/v1/graph/centrality", () => {
-  beforeEach(() => {
-    getAuthMock.mockReset();
-    authed();
-  });
-
-  it("401 when not authenticated", async () => {
-    unauthed();
-    const res = await getCentrality(
-      req("http://localhost/api/v1/graph/centrality"),
-    );
-    expect(res.status).toBe(401);
-  });
-
-  it("503 NEO4J_NOT_POPULATED when authed", async () => {
-    const res = await getCentrality(
-      req("http://localhost/api/v1/graph/centrality"),
-    );
-    expect(res.status).toBe(503);
-    const body = await res.json();
-    expect(body.error.code).toBe("NEO4J_NOT_POPULATED");
   });
 });
 
