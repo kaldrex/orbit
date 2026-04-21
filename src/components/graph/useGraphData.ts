@@ -66,35 +66,37 @@ export function useGraphData(
       communityColor: communityColor ?? null,
       hubScore: hubScore ?? null,
     });
+    // Keep every edge with a positive weight. The old >= 1 threshold
+    // hid 123 of 160 real connections because our weights are log-based
+    // and typically fractional.
     const prunedLinks = showSelfEdges
       ? raw.links
-      : raw.links.filter((l) => l.type === "knows" || (l.weight ?? 0) >= 1);
+      : raw.links.filter((l) => l.type === "knows" || (l.weight ?? 0) > 0);
     const allEdges = toReagraphEdges(prunedLinks);
 
-    // Cap the render pool BEFORE filtering so the dim-not-remove filter
-    // can operate over the full rendered surface. Priority when capping:
-    // self first, then edge-connected nodes (preserve topology), then
-    // highest-score isolates. Isolates are the long-tail "other" bucket
-    // with no interaction edges.
-    let capped = allNodes;
-    if (allNodes.length > MAX_RENDERED_NODES) {
-      const connected = new Set<string>();
-      for (const e of allEdges) {
-        connected.add(e.source);
-        connected.add(e.target);
-      }
-      const selfNode = allNodes.filter((n) => n.id === selfNodeId);
-      const connectedNodes = allNodes.filter(
-        (n) => connected.has(n.id) && n.id !== selfNodeId,
-      );
-      const isolateNodes = allNodes
-        .filter((n) => !connected.has(n.id) && n.id !== selfNodeId)
-        .sort((a, b) => b.data.score - a.data.score);
-      const budget = Math.max(
-        0,
-        MAX_RENDERED_NODES - selfNode.length - connectedNodes.length,
-      );
-      capped = [...selfNode, ...connectedNodes, ...isolateNodes.slice(0, budget)];
+    // Render ONLY the connected core — self + nodes with edges. Isolates
+    // (contacts with zero DM/email signal) dropped entirely. Two reasons:
+    //   1. Radial / tree layouts NaN-poison Three.js for nodes
+    //      unreachable from the root; isolates are always unreachable.
+    //   2. Isolates are visually uninteresting — a cloud of disconnected
+    //      points that doesn't convey anything. List view (post-V1) is
+    //      the right home for them.
+    const connected = new Set<string>();
+    for (const e of allEdges) {
+      connected.add(e.source);
+      connected.add(e.target);
+    }
+    const selfNode = allNodes.filter((n) => n.id === selfNodeId);
+    const connectedNodes = allNodes.filter(
+      (n) => connected.has(n.id) && n.id !== selfNodeId,
+    );
+    let capped: ReagraphNode[] = [...selfNode, ...connectedNodes];
+    // Safety net — shouldn't trigger in real data, but cap if a future
+    // dataset has >MAX_RENDERED_NODES connected persons.
+    if (capped.length > MAX_RENDERED_NODES) {
+      capped = capped
+        .sort((a, b) => b.data.score - a.data.score)
+        .slice(0, MAX_RENDERED_NODES);
     }
 
     // Dim-not-remove filter: tag non-matching nodes as dimmed but keep

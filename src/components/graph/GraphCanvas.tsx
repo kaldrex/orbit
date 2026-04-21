@@ -198,7 +198,6 @@ export default function GraphCanvas({
           nodes={nodes}
           edges={edges}
           theme={theme}
-          animated
           layoutType={layoutType}
           sizingType={sizing as SizingType}
           sizingAttribute={sizing === "attribute" ? "score" : undefined}
