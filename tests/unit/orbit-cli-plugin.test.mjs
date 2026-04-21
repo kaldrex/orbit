@@ -44,7 +44,7 @@ function makeFetch(handler) {
 }
 
 const ENV = {
-  ORBIT_API_URL: "http://100.97.152.84:3047/api/v1",
+  ORBIT_API_BASE: "http://100.97.152.84:3047",
   ORBIT_API_KEY: "orb_live_test_abc123",
 };
 
@@ -93,7 +93,7 @@ describe("orbit_person_get", () => {
   });
 
   // THE DOUBLE-PREPEND GUARD. This is the canonical bug for this plugin;
-  // the env var already includes /api/v1 and the CLI must not re-add it.
+  // the base is a bare host and the client must append /api/v1 exactly once.
   it("does NOT double-prepend /api/v1", async () => {
     const fetchMock = makeFetch(() =>
       jsonResponse({ card: { person_id: UMAYR_ID } }),
@@ -148,7 +148,7 @@ describe("orbit_person_get", () => {
   it("preserves trailing-slash env vars without doubling (resolveConfig strips, path joins cleanly)", async () => {
     const fetchMock = makeFetch(() => jsonResponse({ card: {} }));
     const config = resolveConfig({
-      ORBIT_API_URL: "http://100.97.152.84:3047/api/v1/",
+      ORBIT_API_BASE: "http://100.97.152.84:3047/",
       ORBIT_API_KEY: ENV.ORBIT_API_KEY,
     }).config;
     await orbitPersonGet(
@@ -180,7 +180,7 @@ describe("orbit_observation_emit", () => {
     expect(r.deduped).toBe(0);
   });
 
-  it("POST target uses ORBIT_API_URL verbatim + /observations", async () => {
+  it("POST target is ORBIT_API_BASE + /api/v1/observations", async () => {
     const fetchMock = makeFetch(() =>
       jsonResponse({ ok: true, accepted: 1, inserted: 1, deduped: 0 }),
     );
@@ -497,35 +497,45 @@ describe("orbit_observation_bulk", () => {
 // =========================================================================
 
 describe("env plumbing", () => {
-  it("missing ORBIT_API_URL returns an INVALID_INPUT envelope (does not throw)", () => {
+  it("missing ORBIT_API_BASE returns an INVALID_INPUT envelope (does not throw)", () => {
     const r = resolveConfig({ ORBIT_API_KEY: "orb_live_x" });
     expect(r.ok).toBe(false);
     expect(r.error.code).toBe("INVALID_INPUT");
-    expect(r.error.message).toMatch(/ORBIT_API_URL/);
+    expect(r.error.message).toMatch(/ORBIT_API_BASE/);
     expect(r.error.suggestion).toBeDefined();
   });
 
   it("missing ORBIT_API_KEY returns an INVALID_INPUT envelope (does not throw)", () => {
-    const r = resolveConfig({ ORBIT_API_URL: "http://x/api/v1" });
+    const r = resolveConfig({ ORBIT_API_BASE: "http://x" });
     expect(r.ok).toBe(false);
     expect(r.error.code).toBe("INVALID_INPUT");
     expect(r.error.message).toMatch(/ORBIT_API_KEY/);
   });
 
-  it("both missing — surfaces URL first (precedence)", () => {
+  it("both missing — surfaces BASE first (precedence)", () => {
     const r = resolveConfig({});
     expect(r.ok).toBe(false);
     expect(r.error.code).toBe("INVALID_INPUT");
-    expect(r.error.message).toMatch(/ORBIT_API_URL/);
+    expect(r.error.message).toMatch(/ORBIT_API_BASE/);
+  });
+
+  it("rejects ORBIT_API_BASE that contains /api/v<N> (guards against stale configs)", () => {
+    const r = resolveConfig({
+      ORBIT_API_BASE: "http://x/api/v1",
+      ORBIT_API_KEY: "orb_live_y",
+    });
+    expect(r.ok).toBe(false);
+    expect(r.error.code).toBe("INVALID_INPUT");
+    expect(r.error.message).toMatch(/must not include/);
   });
 
   it("resolveConfig strips trailing slashes on success", () => {
     const r = resolveConfig({
-      ORBIT_API_URL: "http://x/api/v1////",
+      ORBIT_API_BASE: "http://x////",
       ORBIT_API_KEY: "orb_live_y",
     });
     expect(r.ok).toBe(true);
-    expect(r.config.url).toBe("http://x/api/v1");
+    expect(r.config.url).toBe("http://x");
     expect(r.config.key).toBe("orb_live_y");
   });
 
@@ -570,7 +580,7 @@ describe("env plumbing", () => {
 
   it("when env missing, same short-circuit applies to orbit_observation_bulk", async () => {
     const fetchMock = makeFetch(() => jsonResponse({ ok: true }));
-    const cfg = resolveConfig({ ORBIT_API_URL: "http://x/api/v1" }); // KEY missing
+    const cfg = resolveConfig({ ORBIT_API_BASE: "http://x" }); // KEY missing
     let result;
     if (!cfg.ok) {
       result = { error: cfg.error };

@@ -66,7 +66,7 @@ function withCfg(fn) {
   };
 }
 
-// Local-only verbs (calendar/messages) don't need ORBIT_API_URL/KEY for
+// Local-only verbs (calendar/messages) don't need ORBIT_API_BASE/KEY for
 // the shell-out itself, but orbit_messages_fetch uses orbit_person_get
 // under the hood to pull the person's phones — so we resolve config
 // anyway and pass it through so the nested call is authed.
@@ -88,7 +88,7 @@ export default definePluginEntry({
     api.registerTool({
       name: "orbit_observation_emit",
       description:
-        "POST a single observation to Orbit's basket (/api/v1/observations). Validates against the observation schema locally before posting. Reads ORBIT_API_URL + ORBIT_API_KEY from env. Returns {ok, accepted, inserted, deduped} on success, {error:{code, message, suggestion, body_preview?, details?}} on failure. When dry_run=true, validates locally only and returns {ok:true, dry_run:true, would_insert:1, validation:{passed:true}} — no HTTP call. No retries — log-first, retry-never.",
+        "POST a single observation to Orbit's basket (/api/v1/observations). Validates against the observation schema locally before posting. Reads ORBIT_API_BASE + ORBIT_API_KEY from env. Returns {ok, accepted, inserted, deduped} on success, {error:{code, message, suggestion, body_preview?, details?}} on failure. When dry_run=true, validates locally only and returns {ok:true, dry_run:true, would_insert:1, validation:{passed:true}} — no HTTP call. No retries — log-first, retry-never.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -343,7 +343,7 @@ export default definePluginEntry({
     api.registerTool({
       name: "orbit_messages_fetch",
       description:
-        "Read the last N WhatsApp messages (DM + groups authored by this person) from ~/.wacli/wacli.db on claw, bridging phone→LID via session.db. Uses orbit_person_get internally to pull the person's canonical phones (requires ORBIT_API_URL/KEY). Returns {person_id, messages:[{ts, body, ctx, from_me?}], count, fetched_at}. Replaces the hand-crafted SQLite queries that used to live inside the topic-resonance SKILL's script.",
+        "Read the last N WhatsApp messages (DM + groups authored by this person) from ~/.wacli/wacli.db on claw, bridging phone→LID via session.db. Uses orbit_person_get internally to pull the person's canonical phones (requires ORBIT_API_BASE/KEY). Returns {person_id, messages:[{ts, body, ctx, from_me?}], count, fetched_at}. Replaces the hand-crafted SQLite queries that used to live inside the topic-resonance SKILL's script.",
       parameters: {
         type: "object",
         additionalProperties: false,

@@ -45,7 +45,7 @@ Future: publish the plugins as versioned npm packages, skip the git-clone.
 ### Step 5 — Configure env (admin, 2 min)
 Deep's `~/.openclaw/.env`:
 ```
-ORBIT_API_URL=https://orbit.yourdomain.com/api/v1
+ORBIT_API_BASE=https://orbit.yourdomain.com
 ORBIT_API_KEY=orb_live_deep_xxxxx
 ORBIT_SELF_EMAIL=deep@yourdomain.com
 ORBIT_SELF_PHONE=+1xxxxxxxxxx

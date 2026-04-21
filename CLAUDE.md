@@ -47,7 +47,7 @@ POST /api/v1/jobs/report                → write result (succeeded/failed/retry
 
 - **Framework:** Next.js 16 App Router + Turbopack
 - **DB:** Supabase Postgres (ledger + auth + observations + persons via RLS). Neo4j Aura empty (deferred but first-class).
-- **Tests:** Vitest, `npm test`, **508 passing + 1 skipped across 35 test files** (~8 s full suite).
+- **Tests:** Vitest, `npm test`, **505 passing + 1 skipped across 33 test files** (~3 s full suite).
 - **Agent runtime:** OpenClaw (public MIT framework by Peter Steinberger, ~360k stars, Nov 2025) running on the founder's machine. Not Orbit's product.
 
 <!-- BEGIN:nextjs-agent-rules -->

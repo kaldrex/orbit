@@ -15,7 +15,8 @@
 #
 # Env (read from /home/sanchay/.orbit/env — symlinked / sourced by the
 # systemd unit):
-#   ORBIT_API_URL       e.g. https://orbit.example.com/api/v1
+#   ORBIT_API_BASE      bare host, NO /api/v1 suffix
+#                       (e.g. http://100.97.152.84:3047 or https://orbit.example.com)
 #   ORBIT_API_KEY       Bearer token (orb_live_...)
 #   ANTHROPIC_API_KEY   for the enricher / topic-resonance SKILLs
 #
@@ -38,18 +39,25 @@ log() {
   printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "${TICK_LOG}" >&2
 }
 
-if [[ -z "${ORBIT_API_URL:-}" || -z "${ORBIT_API_KEY:-}" ]]; then
-  log "FATAL: ORBIT_API_URL / ORBIT_API_KEY must be set"
+if [[ -z "${ORBIT_API_BASE:-}" || -z "${ORBIT_API_KEY:-}" ]]; then
+  log "FATAL: ORBIT_API_BASE / ORBIT_API_KEY must be set"
   exit 1
 fi
 
-BASE_URL="${ORBIT_API_URL%/}"  # strip trailing slash
+# ORBIT_API_BASE is the bare host (no /api/v1). The script appends
+# /api/v1/<route> at every call site so the invariant is visible.
+API_BASE="${ORBIT_API_BASE%/}"
+
+if [[ "${API_BASE}" == *"/api/v"* ]]; then
+  log "FATAL: ORBIT_API_BASE must not contain /api/v<N> — got ${API_BASE}"
+  exit 1
+fi
 
 log "tick start agent=${AGENT_ID} kinds=${KINDS_JSON}"
 
 # --- 1. Claim a job ----------------------------------------------------
 CLAIM_BODY="$(printf '{"agent":"%s","kinds":%s}' "${AGENT_ID}" "${KINDS_JSON}")"
-CLAIM_RESP="$(curl -sS -X POST "${BASE_URL}/jobs/claim" \
+CLAIM_RESP="$(curl -sS -X POST "${API_BASE}/api/v1/jobs/claim" \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer ${ORBIT_API_KEY}" \
   --data "${CLAIM_BODY}" || true)"
@@ -112,7 +120,7 @@ REPORT_BODY="$(jq -nc \
   --argjson result "${RESULT_JSON}" \
   '{job_id:$job_id, status:$status, result:$result}')"
 
-REPORT_RESP="$(curl -sS -X POST "${BASE_URL}/jobs/report" \
+REPORT_RESP="$(curl -sS -X POST "${API_BASE}/api/v1/jobs/report" \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer ${ORBIT_API_KEY}" \
   --data "${REPORT_BODY}" || true)"

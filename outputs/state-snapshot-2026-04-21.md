@@ -1,3 +1,5 @@
+> **Archived snapshot — 2026-04-21T08:35Z.** Some "Known debt" items recorded here (CLI version drift: claw v0.2.0 vs Mac v0.4.0; 20 uncommitted files; 25 commits ahead of main) were resolved by commit `9e96d5a` (Phase 7 consolidate) shortly after this was written. Current ground truth is in `agent-docs/19-handoff-2026-04-21.md`.
+
 # Orbit V1 — State Snapshot · 2026-04-21T08:35Z
 
 > Read this as the complete freeze-frame after the F1–F7 hygiene + vision-restore sprint. Captured live (psql + curl + ssh) — every count is from a real probe. Generated ~1 hour after the last commit (`03c9c61`).

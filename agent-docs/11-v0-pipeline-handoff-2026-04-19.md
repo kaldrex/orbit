@@ -122,7 +122,7 @@ caed49a docs(openclaw-snapshot): autonomous reconnaissance of claw VM
 - `~/.openclaw/plugins/orbit-rules/` — deployed, installed (`openclaw plugins install` ran cleanly).
 - `~/.openclaw/extensions/orbit-rules/` — installation copy (this is what's actually loaded).
 - `~/.openclaw/workspace/skills/orbit-observer/SKILL.md` + `.../orbit-resolver/SKILL.md` — deployed, discoverable.
-- `~/.openclaw/.env.ORBIT_API_URL` = `http://100.97.152.84:3047/api/v1` (temp — points at dev Mac over tailnet; original Vercel URL backed up at `~/.openclaw/.env.bak.pre-dev-*`).
+- `~/.openclaw/.env.ORBIT_API_BASE` = `http://100.97.152.84:3047` (bare host; points at dev Mac over tailnet; original Vercel URL backed up at `~/.openclaw/.env.bak.pre-dev-*`). Post-Cutover-A the env var is `ORBIT_API_BASE` without `/api/v1` — the CLI appends that prefix itself.
 - `openclaw.json → plugins.entries.orbit-rules = {"enabled": true}`.
 
 ### 3.3. In Supabase (project `xrfcmjllsotkwxxkfamb`)

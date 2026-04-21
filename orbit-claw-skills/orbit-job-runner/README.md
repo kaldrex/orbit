@@ -36,7 +36,7 @@ systemctl --user status orbit-job-runner.timer
 service unit). That file must export:
 
 ```
-ORBIT_API_URL=https://orbit.example.com/api/v1
+ORBIT_API_BASE=https://orbit.example.com
 ORBIT_API_KEY=orb_live_...
 ANTHROPIC_API_KEY=sk-ant-...        # for enricher / topic dispatchers
 ORBIT_AGENT_ID=wazowski             # optional, default wazowski

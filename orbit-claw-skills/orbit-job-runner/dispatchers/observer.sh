@@ -36,12 +36,13 @@ fi
 # who needs backfill before the observer can do anything useful. We use
 # curl directly here (not orbit-cli) because this wrapper is pre-SKILL
 # plumbing and must stay side-effect-free until it decides to dispatch.
+# ORBIT_API_BASE is the bare host; we append /api/v1 here explicitly.
 FIRST_RUN="false"
-if [[ -n "${ORBIT_API_URL:-}" && -n "${ORBIT_API_KEY:-}" ]]; then
-  BASE_URL="${ORBIT_API_URL%/}"
+if [[ -n "${ORBIT_API_BASE:-}" && -n "${ORBIT_API_KEY:-}" ]]; then
+  API_BASE="${ORBIT_API_BASE%/}"
   OBS_PROBE="$(curl -sS --max-time 10 \
     -H "Authorization: Bearer ${ORBIT_API_KEY}" \
-    "${BASE_URL}/observations?limit=1" 2>/dev/null || echo '{}')"
+    "${API_BASE}/api/v1/observations?limit=1" 2>/dev/null || echo '{}')"
   OBS_COUNT="$(printf '%s' "${OBS_PROBE}" | jq -r '.observations | length // 0' 2>/dev/null || echo 0)"
   if [[ "${OBS_COUNT}" == "0" ]]; then
     FIRST_RUN="true"

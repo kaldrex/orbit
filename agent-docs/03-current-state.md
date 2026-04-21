@@ -6,12 +6,12 @@ _Last meaningful update: 2026-04-21 (post Phase 5 Living Orbit + LID bridge + A6
 
 ## Summary (2026-04-21, post Phase 5 Living Orbit)
 
-- **Backend: 18 V1 API routes**, **508 tests green + 1 skipped across 35 files** (~8 s full suite), **1,602 clean persons** in DB.
+- **Backend: 18 V1 API routes**, **505 tests green + 1 skipped across 33 files** (~3 s full suite), **1,602 clean persons** in DB.
 - **Observations**: **29,771 rows** (Sanchay's `user_id`): merge 13,360 · interaction 11,762 · person 4,648 · correction 1. `person_observation_links` 29,768.
 - **Neo4j Aura: populated and load-bearing.** 1,602 `:Person` nodes + **1,232 edges** (DM 135 · SHARED_GROUP 1,095 · EMAILED 2). Graph projection rebuilt via `/api/v1/graph/populate`; weight `ln(1+count) · exp(-days/180)`.
 - **Category distribution (latest observations):** other 1,055 · fellow 282 · friend 101 · community 90 · founder 31 · sponsor 20 · team 18 · media 5.
 - **Rule layer: 10 modules** in `orbit-rules-plugin/lib/` — `safety`, `name`, `group-junk`, `bridge`, `forwarded`, `lid`, `phone`, `email`, `fuzzy`, `domain` + `data/domains.json`. All rules ship with tests.
-- **CLI plugin: v0.3.0, 16 verbs** (adds `orbit_lid_bridge_upsert` on top of v0.2.0's 15). 12-code error taxonomy + dry-run mode. Pure plumbing (no LLM, no ANTHROPIC_API_KEY).
+- **CLI plugin: v0.4.0, 19 verbs** (adds `orbit_raw_events_backfill_from_wacli`, `orbit_lid_bridge_ingest`, `orbit_interactions_backfill` on top of v0.3.0). 12-code error taxonomy + dry-run mode. Pure plumbing (no LLM, no ANTHROPIC_API_KEY).
 - **Observer + resolver + meeting-brief + topic-resonance SKILLs use CLI verbs**, not raw curl. `orbit-job-runner/` shell dispatchers fan out to `openclaw agent`.
 - **Stage 6-v3 + v4 enrichment:** $8.55 total spend, 547 persons meaningfully enriched, 1,055 honest "other" (placeholder). Fix-#1 LID bridge moved 415 persons out of "other" into real categories.
 - **Topic resonance:** 699 person-topic rows, 99 persons with ≥1 topic (of 256 with message signal). $1.72 Haiku spend.
@@ -91,10 +91,10 @@ Scripts (load-bearing):
 - [scripts/topic-resonance.mjs](../scripts/topic-resonance.mjs), [repost-topics.mjs](../scripts/repost-topics.mjs) — NER-to-topics pipeline + re-poster
 - [scripts/build-network-viz.mjs](../scripts/build-network-viz.mjs), [simulate-card.mjs](../scripts/simulate-card.mjs), [simulate-ramon.mjs](../scripts/simulate-ramon.mjs)
 
-**Tests: 529 passing + 2 skipped across 36 test files, full suite ~8 s.**
+**Tests: 505 passing + 1 skipped across 33 test files, full suite ~3 s.**
 
 Test layout:
-- `tests/unit/` — 18 files: sanity, raw-events-schema, upsert-raw-events-rpc, observations-schema, card-assembler, orbit-rules-plugin (+ name / safety / group-junk variants), orbit-cli-plugin, orbit-cli-new-verbs, resilient-worker, neo4j-client, graph-transforms, graph-intelligence, topic-chip, generate-merges-v2, manifest-to-observations
+- `tests/unit/` — 16 files: sanity, raw-events-schema, upsert-raw-events-rpc, observations-schema, card-assembler, orbit-rules-plugin (+ name / safety / group-junk variants), orbit-cli-plugin, orbit-cli-new-verbs, resilient-worker, neo4j-client, graph-transforms, graph-intelligence, topic-chip, no-anthropic-outside-skills
 - `tests/integration/` — 17 files: raw-events-endpoint, observations-endpoint, person-card-endpoint, person-correct-endpoint, persons-enriched-endpoint, v1-persons-going-cold, v1-self-init, v1-meetings-upcoming, v1-person-topics, v1-keys, v1-capabilities, v1-jobs, graph-populate-route, graph-endpoints, graph-path-route, wacli-to-raw-events, manifest-gen-enrichment-loop
 
 Skipped (1, intentional):
@@ -147,7 +147,7 @@ All in `.env.local` (worktree and parent repo — both in sync):
 - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` — browser-safe
 - `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_URL`, `SUPABASE_DB_PASSWORD` — server/CLI only
 - `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`, `NEO4J_DATABASE`
-- `ORBIT_API_KEY`, `ORBIT_API_URL`
+- `ORBIT_API_KEY`, `ORBIT_API_BASE` (bare host; CLI appends `/api/v1`)
 - `ORBIT_SELF_EMAIL` (comma-separated supported), `ORBIT_SELF_PHONE` — the founder/self identity anchor
 - `ORBIT_USER_EMAIL`, `ORBIT_USER_PASSWORD` — dev login
 - `WACLI_DB` (optional; defaults to `~/.wacli/wacli.db`)
@@ -168,5 +168,5 @@ All in `.env.local` (worktree and parent repo — both in sync):
 | 2026-04-20 | Cleanup session per audit findings. 4 phases landed: (A) WhatsApp depth — 5 new rule modules with ~30 tests; (B) DB wipe + safety re-ingest — 6,807 dirty rows → 1,602 clean; (C) Enrichment loop — `/api/v1/persons/enriched` route + CLI verb + manifest-gen merge-back; (D) Docs/memory sync (this update + doc 14 + memory entries). `ORBIT_SELF_EMAIL` hardcode removed. Tests 108 → 329. Memory updated with `project_openclaw_is_a_public_framework`, `project_api_is_only_writer`, expanded `feedback_explain_with_concrete_examples`. See [14-cleanup-2026-04-20.md](./14-cleanup-2026-04-20.md). |
 | 2026-04-20 (late) | Stage 6-v3 + v4 LLM enrichment. v3: 1,568 persons enriched via batched `session with context:` against OpenProse, $4.03, 0/50 vague sample. v4 (Fix #1 — LID bridge): re-targeted 1,470 "other" persons with group/thread-joined context, $4.52, 415 moved from "other" to real categories (fellow/friend/community/founder/team). Total spend: $8.55. New doc [15-future-props.md](./15-future-props.md) captures strategic inventory + Neo4j first-class reinstatement. |
 | 2026-04-20 (docs refresh) | Full doc audit. `04-roadmap.md` + `05-golden-packets.md` archived (pre-V0 framings). CLAUDE.md rewritten (3-contracts → 5 routes, 26 tests → 329, adds CLI/API rules). 03, 06, 11, 12, 13 surgical edits. verification-log.md backfilled with Stage 6-v3 + 6-v4 rows. See `outputs/docs-refresh-2026-04-20/report.md`. |
-| 2026-04-21 | V1 full delivery — Phase 0 (api_keys + neo4j client + capabilities + keys routes), Phase 1 (dashboard wire + interaction pipeline + card-row RPC), Phase 2 (graph populate + constellation render), Phase 3 (intro path + communities + centrality), Phase 4 (going-cold + meeting briefs + topic resonance), Phase 4.5 (orbit-cli v0.2.0 rebalance), 5 UI fixes, LID bridge (edges 160 → 1,232), Phase 5 Living Orbit (jobs queue + pg_cron + Haiku enricher + claw runner). Tests 329 → 508 across 35 files. Neo4j populated to 1,602 nodes + 1,232 edges. |
-| 2026-04-21 (audit backfill) | A6 audit: verification-log backfilled with 8 missing rows (5 UI dashboard fixes, orbit-cli v0.2.0 rebalance, Going Cold standalone, Meeting Briefs standalone, claw job-runner follow-up). CLAUDE.md + 03-current-state.md + README.md stale counts refreshed (329 → 508 tests, 19 → 35 files, 5 → 18 routes, 4 → 16 CLI verbs). Doc 18 indexed. |
+| 2026-04-21 | V1 full delivery — Phase 0 (api_keys + neo4j client + capabilities + keys routes), Phase 1 (dashboard wire + interaction pipeline + card-row RPC), Phase 2 (graph populate + constellation render), Phase 3 (intro path + communities + centrality), Phase 4 (going-cold + meeting briefs + topic resonance), Phase 4.5 (orbit-cli v0.4.0 rebalance), 5 UI fixes, LID bridge (edges 160 → 1,232), Phase 5 Living Orbit (jobs queue + pg_cron + Haiku enricher + claw runner). Tests 329 → 505 across 33 files. Neo4j populated to 1,602 nodes + 1,232 edges. |
+| 2026-04-21 (audit backfill) | A6 audit: verification-log backfilled with 8 missing rows (5 UI dashboard fixes, orbit-cli v0.4.0 rebalance, Going Cold standalone, Meeting Briefs standalone, claw job-runner follow-up). CLAUDE.md + 03-current-state.md + README.md stale counts refreshed (329 → 505 tests, 19 → 33 files, 5 → 18 routes, 4 → 19 CLI verbs). Doc 18 indexed. Phase 7 consolidate (9e96d5a) swept uncommitted files; CLI version drift resolved. |

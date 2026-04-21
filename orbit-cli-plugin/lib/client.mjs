@@ -6,8 +6,10 @@
 // Config is passed in from lib/env.mjs — we never touch the environment
 // directly from this file. See that module for the URL + key contract.
 //
-// NEVER prepend '/api/v1' to paths — the configured base already includes
-// it. This is the canonical double-prepend gotcha; unit-tested in
+// URL contract: ORBIT_API_BASE is the bare host (no /api/v1). joinUrl()
+// below is the single place that appends the /api/v1 path prefix.
+// This means every verb's `relPath` is a route-relative path like
+// "/observations" or "/person/:id/card". Unit-tested in
 // tests/unit/orbit-cli-plugin.test.mjs.
 //
 // Error shape: every {error: {...}} conforms to lib/errors.mjs — stable
@@ -40,11 +42,12 @@ function authHeaders(key) {
   };
 }
 
-// Never re-prepend /api/v1 — the configured base URL already contains it.
-// Tool paths are relative to the base: /observations, /person/:id/card.
+// Base is the bare host (e.g. http://100.97.152.84:3047). We append
+// /api/v1 exactly once here, then the route-relative path. Tool paths
+// passed in by verbs are like /observations, /person/:id/card.
 function joinUrl(base, relPath) {
   const path = relPath.startsWith("/") ? relPath : `/${relPath}`;
-  return `${base}${path}`;
+  return `${base}/api/v1${path}`;
 }
 
 async function readBody(res) {
@@ -415,7 +418,7 @@ export async function orbitPersonsListEnriched(
       : cfg;
   if (!effective) {
     return invalidInputError(
-      "ORBIT_API_URL / ORBIT_API_KEY must be set",
+      "ORBIT_API_BASE / ORBIT_API_KEY must be set",
       "Check the gateway env before calling orbit_persons_list_enriched.",
     );
   }
@@ -471,7 +474,7 @@ function unwrapConfig(cfg) {
   if (!effective) {
     return {
       error: invalidInputError(
-        "ORBIT_API_URL / ORBIT_API_KEY must be set",
+        "ORBIT_API_BASE / ORBIT_API_KEY must be set",
         "Check the gateway env before calling this verb.",
       ).error,
     };

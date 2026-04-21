@@ -69,7 +69,7 @@ function makeFetch(handler) {
 }
 
 const ENV = {
-  ORBIT_API_URL: "http://100.97.152.84:3047/api/v1",
+  ORBIT_API_BASE: "http://100.97.152.84:3047",
   ORBIT_API_KEY: "orb_live_test_abc123",
 };
 const CFG = resolveConfig(ENV).config;

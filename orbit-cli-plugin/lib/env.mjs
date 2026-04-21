@@ -4,22 +4,36 @@
 // in different files is what lets the scanner pass us.
 //
 // Env contract (must be set by the gateway systemd unit):
-//   ORBIT_API_URL = fully-qualified base including /api/v1
-//                   (e.g. http://100.97.152.84:3047/api/v1)
-//   ORBIT_API_KEY = Bearer token (orb_live_*)
+//   ORBIT_API_BASE = bare host, no path
+//                    (e.g. http://100.97.152.84:3047 or https://orbit.example.com)
+//   ORBIT_API_KEY  = Bearer token (orb_live_*)
+//
+// The base MUST NOT include `/api/v1` — the client.mjs layer appends it.
+// This keeps the local-vs-Vercel cutover a one-line env swap.
 
 export function resolveConfig(envSource) {
   const env = envSource ?? process.env;
-  const url = env.ORBIT_API_URL;
+  const base = env.ORBIT_API_BASE;
   const key = env.ORBIT_API_KEY;
-  if (!url) {
+  if (!base) {
     return {
       ok: false,
       error: {
         code: "INVALID_INPUT",
-        message: "orbit-cli: ORBIT_API_URL is not set",
+        message: "orbit-cli: ORBIT_API_BASE is not set",
         suggestion:
-          "Set ORBIT_API_URL on the gateway host (e.g. http://100.97.152.84:3047/api/v1) before invoking any orbit-cli tool.",
+          "Set ORBIT_API_BASE on the gateway host to the bare host (e.g. http://100.97.152.84:3047 or https://orbit.example.com) before invoking any orbit-cli tool. Do NOT include /api/v1 — the client appends it.",
+      },
+    };
+  }
+  if (/\/api\/v\d+/i.test(base)) {
+    return {
+      ok: false,
+      error: {
+        code: "INVALID_INPUT",
+        message: "orbit-cli: ORBIT_API_BASE must not include /api/v<N>",
+        suggestion:
+          "ORBIT_API_BASE is the bare host only (e.g. http://100.97.152.84:3047). The /api/v1 path prefix is appended automatically by the client.",
       },
     };
   }
@@ -35,5 +49,5 @@ export function resolveConfig(envSource) {
     };
   }
   // Canonicalize: strip trailing slashes so we always join with a single /.
-  return { ok: true, config: { url: url.replace(/\/+$/, ""), key } };
+  return { ok: true, config: { url: base.replace(/\/+$/, ""), key } };
 }

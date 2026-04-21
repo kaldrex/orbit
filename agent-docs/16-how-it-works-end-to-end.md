@@ -47,7 +47,7 @@
 - Plugin loader: `const { t: definePluginEntry } = require(pluginEntryBundle)` — yes this is a weird alias (the runtime's export is aliased as `t`). It's the only way to load an OpenClaw plugin.
 - Env at `~/.openclaw/.env`:
   ```
-  ORBIT_API_URL=https://orbit.yourdomain.com/api/v1
+  ORBIT_API_BASE=https://orbit.yourdomain.com
   ORBIT_API_KEY=orb_live_xxxx
   ORBIT_SELF_EMAIL=sanchay@...
   ORBIT_SELF_PHONE=+91...

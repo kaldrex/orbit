@@ -111,7 +111,7 @@ export function networkError(e) {
       code: ERROR_CODES.NETWORK_ERROR,
       message: `fetch failed: ${e?.message ?? String(e)}`,
       suggestion:
-        "Check connectivity to ORBIT_API_URL (DNS, Tailscale, port 3047). The Orbit server may be down or the tailnet may be detached.",
+        "Check connectivity to ORBIT_API_BASE (DNS, Tailscale, port 3047). The Orbit server may be down or the tailnet may be detached.",
     },
   };
 }
