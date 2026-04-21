@@ -70,8 +70,16 @@ export const CATEGORY_META: Record<string, CategoryMeta> = {
   other:             { color: "#52525B", label: "Other" },
 };
 
+/** Minimum score for a node to be eligible for the Going Cold filter.
+ *  Tuned against Sanchay's live populate output (max ~10 for self,
+ *  1.4-2.8 for genuine human contacts with ≥ 2 interaction edges).
+ *  `>2` catches humans with sustained two-sided conversation history while
+ *  excluding single-edge long-tail contacts. The same threshold is used
+ *  server-side in `/api/v1/graph` and `/api/v1/persons/going-cold`. */
+export const GOING_COLD_MIN_SCORE = 2;
+
 export function computeCold(ts: string | null, score: number): boolean {
-  if (!ts || score <= 5) return false;
+  if (!ts || score <= GOING_COLD_MIN_SCORE) return false;
   try {
     return Date.now() - Date.parse(ts) > 14 * 24 * 60 * 60 * 1000;
   } catch {

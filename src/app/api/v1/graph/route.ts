@@ -129,8 +129,8 @@ export async function GET(request: Request) {
       const goingColdResult = await session.run(
         `MATCH (p:Person {user_id: $userId})
          WHERE p.last_interaction_at IS NOT NULL
-           AND p.last_interaction_at < datetime() - duration('P14D')
-           AND p.score > 5
+           AND datetime(p.last_interaction_at) < datetime() - duration('P14D')
+           AND p.score > 2
          RETURN count(p) AS going_cold`,
         { userId: auth.userId },
       );

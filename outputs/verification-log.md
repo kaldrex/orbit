@@ -668,3 +668,58 @@ P3-B built the frontend: `IntroPathSearch` (type-ahead against `/persons/enriche
 3. **Intro-path uses unweighted `shortestPath()`** — picks fewest hops, not highest-affinity. `total_affinity` is surfaced as a "warmness" score but doesn't drive selection. When GDS is enabled, swap to `gds.shortestPath.dijkstra` with `cost = 1/weight` for weighted paths. Flagged as tech debt.
 
 **Rollback:** `git checkout src/app/api/v1/graph src/components/graph src/components/Dashboard.tsx src/lib/graph-transforms.ts src/lib/graph-intelligence.ts src/lib/neo4j-gds.ts tests/integration/graph-intel-routes.test.ts tests/unit/graph-intelligence.test.ts`. No Postgres or Neo4j side effects.
+
+---
+
+## 2026-04-21 — Phase 4-C Topic Resonance (Orbit table + routes + UI + claw-side SKILL)
+
+**Claim:** "Topic Resonance end-to-end: `person_topics` table + RLS + upsert/select RPCs applied to live Supabase; `POST/GET /api/v1/person/:id/topics` shipped with Bearer auth; `PersonPanel.tsx` chip-cloud row renders weight-sized chips (hidden when zero); claw-side `orbit-topic-resonance` SKILL + `scripts/topic-resonance.mjs` ran a full batched-NER pass over `~/.wacli/wacli.db` on the claw VM via Haiku 4.5, extracting canonical topic phrases + relative weights for every person with local-message signal; 99 persons wrote topics via the API; Umayr canary unchanged."
+
+**Result:** PASS — all deliverables shipped, tests green, canary held.
+
+| # | Check | Result |
+|---|---|---|
+| a | `npm test` | 34 files · **474 passed** + 2 skipped (up from 435 baseline; +6 POST/GET integration, +4 unit, +remaining sibling-subagent adds) |
+| b | Migration applied live | `person_topics` table + `upsert_person_topics` + `select_person_topics` present in prod Supabase |
+| c | `curl GET /person/24e45dc3-…-d3a1ebca4cc8/topics` (Meet) | HTTP 200 · **10 topics** · "aakaar"(1.0), "flight booking"(0.26), "pr"(0.26), "impact india day"(0.19), "reels"(0.18), "workshops"(0.18), "march meetup"(0.18), "atlas isdi"(0.16), "event planning"(0.16), "reel shoot"(0.16) |
+| d | `curl GET /person/67050b91-…-9a387879717a/topics` (Umayr) | HTTP 200 · **10 topics** · "agent ops"(1.0), "claude agents"(1.0), "iran"(1.0), "jewelry"(1.0), "jewelry crm"(1.0), "observability"(1.0), "omran"(1.0), "a2a protocol"(0.8), "short form content"(0.8), "audience building"(0.6) |
+| e | Umayr canary (card fields) | **SAME** on `name`, `company`, `title`, `category`, `phones`, `emails`, `relationship_to_me` |
+| f | Haiku run total | 523 sub-batches, **$1.72**, 1,629,669 input tok + 18,841 output tok, 0 cache hits (deferred, see §flagged) |
+| g | Persons with messages | 256 / 1,496 with phone |
+| h | Persons with ≥1 topic | **99** / 256 (62% skipped as pure-junk or zero signal) |
+| i | Persons POST OK | **99/99** (initial inline POST phase hit a local dev-server blip; re-posted via `scripts/repost-topics.mjs` against the persisted `final-topics.ndjson` — no Haiku re-spend) |
+
+**Topic-count distribution across the 99 enriched persons:**
+- 0 topics: 0 (none — all 99 are non-empty by construction)
+- 1–3 topics: 47
+- 4–6 topics: 16
+- 7–10 topics: 6
+- 11–15 topics: 17
+- 16–20 topics: 13
+
+**Top 5 shared topics (persons who have this topic):**
+1. `code samaaj` — 12 persons
+2. `cyphersol` — 11 persons
+3. `thane` — 7 persons
+4. `claude` — 7 persons
+5. `job search` — 5 persons
+
+**Evidence:**
+- `supabase/migrations/20260421_person_topics.sql` — table, index, RLS policy, two SECURITY DEFINER RPCs (upsert = atomic replace, select = sorted-by-weight-desc).
+- `src/app/api/v1/person/[id]/topics/route.ts` — POST + GET handlers, Bearer-or-session auth, zod-validated body, topic dedup on `[trim(), lower()]`.
+- `src/components/PersonPanel.tsx` — parallel fetch of card + topics on mount, chip cloud row (hidden when empty), `relationship_to_me` prose also surfaced.
+- `src/lib/topic-chip.ts` — pure `topicChipStyle(weight, max)` helper (extracted for unit testability in Node env).
+- `scripts/topic-resonance.mjs` — phase 1 persons + LID map, phase 2 wacli message gather (DM + group via phone-jid + LID), phase 3 batched Haiku 4.5 via `ResilientWorker`, phase 4 POST. $10 budget ceiling. Sanitizes NUL + unpaired UTF-16 surrogates + runs of whitespace.
+- `scripts/repost-topics.mjs` — one-shot re-posting from the persisted `final-topics.ndjson` (used once after dev-server blip).
+- `orbit-claw-skills/orbit-topic-resonance/SKILL.md` — preconditions, run command, expected output, failure modes.
+- `tests/integration/v1-person-topics.test.ts` — 6 tests (POST auth 401, bad UUID 400, dedup-normalized upsert, idempotent-replace, 404 on wrong-user person, GET shape).
+- `tests/unit/topic-chip.test.ts` — 4 tests on chip-size pure helper.
+- Run artefacts: `outputs/topic-resonance-2026-04-21/{final-topics.ndjson, summary.json, progress.json, run.log, persons-with-messages.ndjson}`.
+
+**Flagged for Sanchay's attention:**
+1. **Prompt cache did not fire.** System block is 2,206 tokens (target 2,048+), `cache_control: {type:"ephemeral"}` is set, Haiku 4.5 responses consistently returned `cache_creation_input_tokens: 0` and `cache_read_input_tokens: 0`. Reproduced with minimal 3,000-token test case. Either this API key is on a legacy tier without prompt caching, or Haiku 4.5 has a different cache threshold than Sonnet. Cost impact: ~10× what it could be ($1.72 vs ~$0.20). Well under budget, so the run shipped, but worth checking.
+2. **Dev server restarted mid-run.** The initial inline POST phase failed 99/99 because the Mac dev server on `100.97.152.84:3047` went down between phase-1 fetch and phase-4 post. Persisted `final-topics.ndjson` saved the Haiku work; one-shot repost script picked up clean. Flag: the live dev server is a single point of failure for long claw-side runs — production (orbit-mu-roan.vercel.app) is torn down per `project_orbit_deployment_burned.md`, so this is expected V0 scaffolding.
+3. **1,240 persons scanned had no WhatsApp-body signal.** Expected — most persons in Orbit's DB came in via group-participant rolls or contact-card hits, not direct DM. Topics as a feature will surface the ~100 persons Sanchay actively talks to — which is exactly the discovery-engine thesis.
+4. **Script carries its own `package.json` on claw** (`~/orbit-pipeline-tmp/package.json` pinning `@anthropic-ai/sdk@^0.90.0` + `better-sqlite3@^11.5.0`). When claw gets a proper orbit checkout, swap rsync for a real `npm install` against that checkout.
+
+**Rollback:** `git checkout src/components/PersonPanel.tsx` + `rm -rf src/app/api/v1/person/[id]/topics src/lib/topic-chip.ts tests/integration/v1-person-topics.test.ts tests/unit/topic-chip.test.ts scripts/topic-resonance.mjs orbit-claw-skills/orbit-topic-resonance supabase/migrations/20260421_person_topics.sql` + `DROP TABLE public.person_topics CASCADE; DROP FUNCTION public.upsert_person_topics(uuid,uuid,jsonb); DROP FUNCTION public.select_person_topics(uuid,uuid,integer);` on live Supabase. Neo4j + observations ledger untouched.

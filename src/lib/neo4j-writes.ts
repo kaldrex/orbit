@@ -58,7 +58,9 @@ export interface GraphNode {
   phone_count: number;
   email_count: number;
   first_seen: string | null;
-  last_seen: string | null;
+  /** Canonical "last interaction" timestamp. Surfaces as p.last_interaction_at
+   *  in Neo4j — used by the Going Cold filter + `/persons/going-cold` route. */
+  last_interaction_at: string | null;
   updated_at: string;
 }
 
@@ -84,7 +86,7 @@ export interface GraphEdge {
 const INDEX_CYPHER: string[] = [
   "CREATE INDEX person_id_user IF NOT EXISTS FOR (p:Person) ON (p.id, p.user_id)",
   "CREATE INDEX person_user_category IF NOT EXISTS FOR (p:Person) ON (p.user_id, p.category)",
-  "CREATE INDEX person_user_last_seen IF NOT EXISTS FOR (p:Person) ON (p.user_id, p.last_seen)",
+  "CREATE INDEX person_user_last_ix IF NOT EXISTS FOR (p:Person) ON (p.user_id, p.last_interaction_at)",
 ];
 
 export async function ensureIndexes(session: Session): Promise<void> {
@@ -115,7 +117,7 @@ export async function mergeNodes(session: Session, nodes: GraphNode[]): Promise<
           p.phone_count = row.phone_count,
           p.email_count = row.email_count,
           p.first_seen = row.first_seen,
-          p.last_seen = row.last_seen,
+          p.last_interaction_at = row.last_interaction_at,
           p.updated_at = row.updated_at
       `,
       { rows: slice },
@@ -211,4 +213,54 @@ export async function pruneStaleNodes(
   );
   const rec = res.records[0];
   return rec ? Number(rec.get("n")) : 0;
+}
+
+// ---------------------------------------------------------------------------
+// Score recompute. Runs after edges are merged so each node has an up-to-
+// date degree count. Formula: `score = ln(1 + edge_count) * 2`, which gives
+// Sanchay's self-node (connected to every SHARED_GROUP thread) ~10, genuine
+// hubs 3-5, and long-tail contacts 0-2. The Going Cold filter requires
+// `score > 5`, so the distribution matters — a constant-score populate
+// would make the filter unreachable.
+// ---------------------------------------------------------------------------
+
+export async function recomputeScores(
+  session: Session,
+  userId: string,
+): Promise<{ nodes: number; max_score: number; top5: Array<{ id: string; name: string | null; score: number }> }> {
+  // Single pass, degree-based. OPTIONAL MATCH handles zero-edge nodes.
+  await session.run(
+    `
+    MATCH (p:Person {user_id: $user_id})
+    OPTIONAL MATCH (p)-[r]-(o:Person {user_id: $user_id})
+    WHERE r.user_id = $user_id
+    WITH p, count(r) AS edge_count
+    SET p.score = CASE WHEN edge_count = 0 THEN 0.0 ELSE log(1.0 + toFloat(edge_count)) * 2.0 END
+    `,
+    { user_id: userId },
+  );
+
+  // Report back a top-5 sample for verification visibility.
+  const countRes = await session.run(
+    `MATCH (p:Person {user_id: $user_id}) RETURN count(p) AS n`,
+    { user_id: userId },
+  );
+  const topRes = await session.run(
+    `
+    MATCH (p:Person {user_id: $user_id})
+    RETURN p.id AS id, p.name AS name, p.score AS score
+    ORDER BY p.score DESC
+    LIMIT 5
+    `,
+    { user_id: userId },
+  );
+
+  const nodes = countRes.records[0] ? Number(countRes.records[0].get("n")) : 0;
+  const top5 = topRes.records.map((r) => ({
+    id: String(r.get("id")),
+    name: (r.get("name") as string | null) ?? null,
+    score: Number(r.get("score") ?? 0),
+  }));
+  const max_score = top5[0]?.score ?? 0;
+  return { nodes, max_score, top5 };
 }

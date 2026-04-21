@@ -10,6 +10,7 @@ import {
   pruneStaleNodes,
   computeWeight,
   computeSharedGroupWeight,
+  recomputeScores,
   type GraphNode,
   type GraphEdge,
 } from "@/lib/neo4j-writes";
@@ -192,6 +193,37 @@ export async function POST(request: Request) {
   const runAt = new Date().toISOString();
 
   // ---------- Step 2: project nodes ----------
+  //
+  // `last_interaction_at` must reflect the actual real-world time the
+  // founder last interacted with the person -- not the observation's
+  // wall-clock observed_at (which is the enrichment ingest time, all
+  // clumped in the last few days). Derive it from the raw edge sources:
+  // DM thread last_at, SHARED_GROUP last_at, EMAILED last_at. Falls back
+  // to the observation's last_seen when the person has no edges (kept as
+  // a weak signal rather than leaving last_interaction_at null).
+
+  const phoneMap = new Map<string, string>();
+  for (const row of phoneRows) {
+    if (!phoneMap.has(row.phone)) phoneMap.set(row.phone, row.person_id);
+  }
+
+  const personLastInteractionMap = new Map<string, string>();
+  const bumpLast = (personId: string, at: string | null) => {
+    if (!personId || !at) return;
+    const prev = personLastInteractionMap.get(personId);
+    if (!prev || at > prev) personLastInteractionMap.set(personId, at);
+  };
+  for (const d of dmRows) {
+    const personId = phoneMap.get(d.thread_phone);
+    if (personId) bumpLast(personId, d.last_at);
+  }
+  for (const g of groupRows) {
+    const personId = phoneMap.get(g.phone);
+    if (personId) bumpLast(personId, g.last_at);
+  }
+  for (const e of emailRows) {
+    bumpLast(e.person_id, e.last_at);
+  }
 
   const nodes: GraphNode[] = nodeRows.map((r) => ({
     id: r.id,
@@ -204,14 +236,9 @@ export async function POST(request: Request) {
     phone_count: r.phone_count ?? 0,
     email_count: r.email_count ?? 0,
     first_seen: r.first_seen,
-    last_seen: r.last_seen,
+    last_interaction_at: personLastInteractionMap.get(r.id) ?? r.last_seen,
     updated_at: runAt,
   }));
-
-  const phoneMap = new Map<string, string>();
-  for (const row of phoneRows) {
-    if (!phoneMap.has(row.phone)) phoneMap.set(row.phone, row.person_id);
-  }
 
   // ---------- Step 3: project edges ----------
 
@@ -363,6 +390,7 @@ export async function POST(request: Request) {
   let emailedWritten = 0;
   let prunedNodes = 0;
   let prunedEdges = 0;
+  let scoreSummary: Awaited<ReturnType<typeof recomputeScores>> = { nodes: 0, max_score: 0, top5: [] };
 
   try {
     await withWriteSession(async (session) => {
@@ -375,6 +403,8 @@ export async function POST(request: Request) {
       // in prior consistent state (edges upserted above are idempotent).
       prunedEdges = await pruneStaleEdges(session, userId, runAt);
       prunedNodes = await pruneStaleNodes(session, userId, runAt);
+      // Score recompute is pure-degree and has to run AFTER edges/prune.
+      scoreSummary = await recomputeScores(session, userId);
     });
   } catch (err) {
     console.error("[graph/populate] neo4j write failed", err);
@@ -401,6 +431,11 @@ export async function POST(request: Request) {
     edges_written: edgesWritten,
     breakdown,
     pruned: { nodes: prunedNodes, edges: prunedEdges },
+    scores: {
+      nodes_scored: scoreSummary.nodes,
+      max_score: scoreSummary.max_score,
+      top5: scoreSummary.top5,
+    },
     self_person_id: selfPersonId,
     elapsed_ms: Date.now() - t0,
   });

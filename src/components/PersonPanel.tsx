@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { CATEGORY_META } from "@/lib/graph-transforms";
 import { Button } from "@/components/ui/button";
+import { topicChipStyle } from "@/lib/topic-chip";
 
 interface PersonProfile {
   id: string;
@@ -28,10 +29,16 @@ interface SharedConnection {
   name: string;
 }
 
+interface TopicChip {
+  topic: string;
+  weight: number;
+}
+
 interface PersonData {
   profile: PersonProfile;
   interactions: Interaction[];
   sharedConnections: SharedConnection[];
+  relationship: string;
 }
 
 interface CardEnvelope {
@@ -69,16 +76,28 @@ export default function PersonPanel({
   onSelectPerson?: (id: string) => void;
 }) {
   const [data, setData] = useState<PersonData | null>(null);
+  const [topics, setTopics] = useState<TopicChip[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setData(null);
-    fetch(`/api/v1/person/${encodeURIComponent(personId)}/card`)
+    setTopics([]);
+
+    const cardP = fetch(`/api/v1/person/${encodeURIComponent(personId)}/card`)
       .then((r) => (r.ok ? (r.json() as Promise<CardEnvelope>) : null))
-      .then((env) => {
-        if (cancelled || !env?.card) { setLoading(false); return; }
+      .catch(() => null);
+
+    // Topic Resonance. Fire in parallel with the card fetch — if the
+    // endpoint is missing or auth fails we just hide the row.
+    const topicsP = fetch(`/api/v1/person/${encodeURIComponent(personId)}/topics?limit=10`)
+      .then((r) => (r.ok ? (r.json() as Promise<{ topics: TopicChip[] }>) : null))
+      .catch(() => null);
+
+    Promise.all([cardP, topicsP]).then(([env, tEnv]) => {
+      if (cancelled) return;
+      if (env?.card) {
         const c = env.card;
         setData({
           profile: {
@@ -99,19 +118,41 @@ export default function PersonPanel({
             topic_summary: i.topic ?? null,
           })),
           sharedConnections: [],
+          relationship: c.relationship_to_me ?? "",
         });
-        setLoading(false);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setLoading(false);
-      });
+      }
+      if (Array.isArray(tEnv?.topics)) {
+        setTopics(tEnv.topics.slice(0, 10));
+      }
+      setLoading(false);
+    });
     return () => { cancelled = true; };
   }, [personId]);
 
   const meta = data?.profile.category
     ? CATEGORY_META[data.profile.category] ?? CATEGORY_META.other
     : CATEGORY_META.other;
+
+  // Days-since-last-touch — shown next to the category pill whenever
+  // `last_touch` is populated. Amber when days_since > 14 AND score >= 5,
+  // mirroring the Going Cold graph filter so the founder spots stale
+  // high-value relationships at a glance. The canonical cold flag lives
+  // in the graph payload; this is the panel-local surfacing.
+  let daysSince: number | null = null;
+  if (data?.profile.lastInteractionAt) {
+    const ts = Date.parse(data.profile.lastInteractionAt);
+    if (Number.isFinite(ts)) {
+      daysSince = Math.max(
+        0,
+        Math.floor((Date.now() - ts) / (1000 * 60 * 60 * 24)),
+      );
+    }
+  }
+  // Mirrors the server-side threshold in src/lib/graph-transforms.ts and
+  // /api/v1/persons/going-cold (MIN_SCORE). Score is ≥ 2 for humans with
+  // sustained interaction history.
+  const isGoingCold =
+    daysSince !== null && daysSince > 14 && (data?.profile.score ?? 0) >= 2;
 
   return (
     <div className="h-full w-[380px] flex flex-col border-l border-zinc-800/40 bg-[#0c0c10]">
@@ -159,9 +200,56 @@ export default function PersonPanel({
                 <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: meta.color }} />
                 {meta.label}
               </span>
+              {daysSince !== null && (
+                <span
+                  data-testid="days-since-badge"
+                  className={
+                    isGoingCold
+                      ? "inline-flex items-center rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-300"
+                      : "text-[11px] text-zinc-500"
+                  }
+                  title={
+                    isGoingCold
+                      ? `Going cold — ${daysSince} days since last touch`
+                      : `${daysSince} days since last touch`
+                  }
+                >
+                  {daysSince}d
+                </span>
+              )}
               <span>Score: {data.profile.score.toFixed(1)}</span>
               {data.profile.email && <span>{data.profile.email}</span>}
             </div>
+
+            {data.relationship && (
+              <p
+                className="mt-3 text-[12px] text-zinc-300 leading-relaxed"
+                data-testid="person-relationship"
+              >
+                {data.relationship}
+              </p>
+            )}
+
+            {topics.length > 0 && (
+              <div className="mt-3" data-testid="person-topics">
+                <div className="flex flex-wrap gap-1.5">
+                  {topics.map((t, i) => {
+                    const style = topicChipStyle(t.weight, topics[0]?.weight ?? 1);
+                    return (
+                      <span
+                        key={`${t.topic}-${i}`}
+                        className="inline-flex items-center rounded-full border border-zinc-800 bg-zinc-900/60 px-2 py-0.5 text-zinc-200"
+                        style={style}
+                        title={`weight ${t.weight.toFixed(2)}`}
+                        data-testid="topic-chip"
+                      >
+                        {t.topic}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Timeline */}

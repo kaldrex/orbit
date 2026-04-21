@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   CATEGORY_META,
   FILTER_TO_CATEGORY,
+  computeCold,
   filterReagraphNodes,
   type ReagraphNode,
 } from "@/lib/graph-transforms";
@@ -97,5 +98,46 @@ describe("filterReagraphNodes", () => {
     const out = filterReagraphNodes(nodes, "Going Cold", "me");
     const ids = out.map((n) => n.id).sort();
     expect(ids).toEqual(["b", "me"]);
+  });
+});
+
+describe("computeCold (score threshold)", () => {
+  const OLD = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const FRESH = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+
+  it("returns false when lastInteractionAt is null", () => {
+    expect(computeCold(null, 10)).toBe(false);
+  });
+
+  it("returns false when score <= 2 (threshold is > 2)", () => {
+    expect(computeCold(OLD, 2)).toBe(false);
+    expect(computeCold(OLD, 1.99)).toBe(false);
+    expect(computeCold(OLD, 0)).toBe(false);
+  });
+
+  it("returns true when score > 2 AND last_interaction_at > 14d ago", () => {
+    expect(computeCold(OLD, 2.2)).toBe(true);
+    expect(computeCold(OLD, 10)).toBe(true);
+  });
+
+  it("returns false for fresh interactions even if score is high", () => {
+    expect(computeCold(FRESH, 10)).toBe(false);
+  });
+
+  it("score formula ln(1+edge_count)*2 distribution supports the Going Cold threshold", () => {
+    // The populate path's score formula is log(1 + edge_count) * 2. We
+    // pin the distribution buckets against Sanchay's live data: 2+ edges
+    // clears the threshold, single-edge (long-tail) does not, and the
+    // self-node (~160 edges) sits around 10.
+    const scoreAt = (edgeCount: number) => Math.log(1 + edgeCount) * 2;
+    expect(scoreAt(2)).toBeGreaterThan(2);
+    expect(scoreAt(1)).toBeLessThanOrEqual(2);
+    // Genuine hubs (3-5 edges) land in the 2.7-3.6 band.
+    expect(scoreAt(3)).toBeGreaterThan(2);
+    expect(scoreAt(5)).toBeGreaterThan(2);
+    // Sanchay's self-node (connected to every SHARED_GROUP thread) lands
+    // in the ~8-11 band.
+    expect(scoreAt(160)).toBeGreaterThan(9);
+    expect(scoreAt(160)).toBeLessThan(11);
   });
 });

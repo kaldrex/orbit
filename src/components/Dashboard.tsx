@@ -15,6 +15,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import PersonPanel from "@/components/PersonPanel";
 import AddContactDialog from "@/components/AddContactDialog";
+import MeetingsStrip from "@/components/MeetingsStrip";
 import IntroPathSearch, { type PathState } from "@/components/graph/IntroPathSearch";
 import PathStrip from "@/components/graph/PathStrip";
 import CommunityToggle from "@/components/graph/CommunityToggle";
@@ -69,6 +70,23 @@ export function Dashboard({ user }: DashboardProps) {
       })
       .catch(() => {});
   }, []);
+
+  // One-shot self-init: close the onboarding gap where profiles.self_node_id
+  // hasn't been resolved yet. POSTs /api/v1/self/init (idempotent on the
+  // server), then refreshes so the server component re-reads the profile
+  // and `user.selfNodeId` is populated on the next render.
+  useEffect(() => {
+    if (selfNodeId) return;
+    let cancelled = false;
+    fetch("/api/v1/self/init", { method: "POST" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (cancelled) return;
+        if (d?.self_node_id) router.refresh();
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [selfNodeId, router]);
 
   async function handleSignOut() {
     await supabase.auth.signOut();
@@ -171,6 +189,14 @@ export function Dashboard({ user }: DashboardProps) {
         </DropdownMenu>
         </div>
       </header>
+
+      {/* Upcoming-meetings strip — renders nothing when the next 48h
+          is empty, so layout stays unchanged on quiet days. */}
+      <MeetingsStrip
+        isDark={isDark}
+        onSelectPerson={(id) => setSelectedPerson(id)}
+        horizonHours={48}
+      />
 
       {/* Main area */}
       <div className="flex-1 flex min-h-0">
