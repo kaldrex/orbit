@@ -49,13 +49,13 @@ export default function GraphCanvas({
   hubScore = null,
 }: GraphCanvasProps) {
   const graphRef = useRef<GraphCanvasRef | null>(null);
-  // Default to radialOut2d — deterministic, instant render, no force-
-  // directed physics. Force layouts are still available via the Force
-  // dropdown, but 144 connected + 100 isolates makes `forceDirected2d`
-  // take 10–30s to settle, which looks like a blank canvas. Radial
-  // places self in the center and everyone else around it — fast and
-  // legible for a constellation.
-  const [layout, setLayout] = useState<LayoutKey>("radialOut2d");
+  // Default to forceDirected for the organic "constellation" look. The
+  // NaN-on-isolates issue that motivated the radial fallback is now
+  // solved by dropping isolates from useGraphData — force-directed on
+  // 145 connected nodes settles in ~1s and looks properly alive. Radial
+  // and Circle still available from the dropdown as deterministic
+  // alternatives if you want a static layout.
+  const [layout, setLayout] = useState<LayoutKey>("forceDirected");
   const [sizing, setSizing] = useState<SizingKey>("attribute");
   const [clusterOn, setClusterOn] = useState(false);
   const [hover, setHover] = useState<{ node: ReagraphNode | null; x: number; y: number }>({
@@ -198,6 +198,7 @@ export default function GraphCanvas({
           nodes={nodes}
           edges={edges}
           theme={theme}
+          animated
           layoutType={layoutType}
           sizingType={sizing as SizingType}
           sizingAttribute={sizing === "attribute" ? "score" : undefined}
