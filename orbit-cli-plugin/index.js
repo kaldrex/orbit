@@ -22,6 +22,8 @@ import {
   orbitRawEventsBackfillFromWacli,
   orbitLidBridgeIngest,
   orbitInteractionsBackfill,
+  orbitPersonSnapshotWrite,
+  orbitPersonSnapshotsList,
 } from "./lib/client.mjs";
 import { resolveConfig } from "./lib/env.mjs";
 
@@ -82,7 +84,7 @@ export default definePluginEntry({
   id: "orbit-cli",
   name: "Orbit CLI",
   description:
-    "Plumbing-only wrapper around Orbit's HTTP API. 19 tools: orbit_observation_emit, orbit_observation_bulk, orbit_person_get, orbit_persons_list_enriched, orbit_self_init, orbit_persons_going_cold, orbit_person_get_by_email, orbit_meeting_upsert, orbit_meeting_list, orbit_topics_upsert, orbit_topics_get, orbit_calendar_fetch, orbit_messages_fetch, orbit_jobs_claim, orbit_jobs_report, orbit_lid_bridge_upsert, orbit_raw_events_backfill_from_wacli, orbit_lid_bridge_ingest, orbit_interactions_backfill.",
+    "Plumbing-only wrapper around Orbit's HTTP API. 21 tools: orbit_observation_emit, orbit_observation_bulk, orbit_person_get, orbit_persons_list_enriched, orbit_person_snapshot_write, orbit_person_snapshots_list, orbit_self_init, orbit_persons_going_cold, orbit_person_get_by_email, orbit_meeting_upsert, orbit_meeting_list, orbit_topics_upsert, orbit_topics_get, orbit_calendar_fetch, orbit_messages_fetch, orbit_jobs_claim, orbit_jobs_report, orbit_lid_bridge_upsert, orbit_raw_events_backfill_from_wacli, orbit_lid_bridge_ingest, orbit_interactions_backfill.",
   register(api) {
     // --- Observations ----------------------------------------------------
     api.registerTool({
@@ -208,6 +210,75 @@ export default definePluginEntry({
         properties: {},
       },
       execute: withCfg(orbitPersonsGoingCold),
+    });
+
+    // --- Per-pass snapshots (Phase 2) -----------------------------------
+    api.registerTool({
+      name: "orbit_person_snapshot_write",
+      description:
+        "POST /api/v1/person/:id/snapshots — write ONE immutable per-pass card snapshot. Called by enricher/resolver SKILLs at the end of each pass and by the combiner SKILL when producing pass_kind='summary'. Body: {pass_kind: 'enricher'|'resolver'|'summary'|'correction', card_state: jsonb, evidence_pointer_ids: uuid[], diff_summary: string, confidence_delta: jsonb}. Returns {ok:true, id} on success, {error:{...}} on failure. Observations remain the source of truth; snapshots are a UI-facing projection of pass boundaries plus the LLM's diff_summary text.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          person_id: {
+            type: "string",
+            description: "UUID of the person the snapshot describes.",
+          },
+          pass_kind: {
+            type: "string",
+            enum: ["enricher", "resolver", "summary", "correction"],
+            description:
+              "Which pass produced this snapshot. 'summary' is reserved for the combiner SKILL's aggregated weekly summary; card-assembler prefers the latest 'summary' snapshot as the card headline.",
+          },
+          card_state: {
+            type: "object",
+            description:
+              "The card state at this pass boundary as a JSON object. Shape is opaque to the plugin — the enricher / combiner SKILL decides what to include.",
+          },
+          evidence_pointer_ids: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Observation IDs (UUIDs) that this pass drew from. Enables drill-down from a snapshot row to the raw evidence.",
+          },
+          diff_summary: {
+            type: "string",
+            description:
+              "Short human-readable note: 'what changed this pass.' Max 4000 chars.",
+          },
+          confidence_delta: {
+            type: "object",
+            description:
+              "Optional per-field confidence deltas as a JSON object (e.g. {'category': 0.12, 'relationship_to_me': 0.08}).",
+          },
+        },
+        required: ["person_id", "pass_kind"],
+      },
+      execute: withCfg(orbitPersonSnapshotWrite),
+    });
+
+    api.registerTool({
+      name: "orbit_person_snapshots_list",
+      description:
+        "GET /api/v1/person/:id/snapshots?limit=N — list newest-first per-pass snapshots for a person. Powers the UI Evolution stack and feeds the combiner SKILL's context window. Returns {snapshots: [...], total}.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          person_id: {
+            type: "string",
+            description: "UUID of the person.",
+          },
+          limit: {
+            type: "number",
+            description:
+              "Max rows to return. Defaults to 50; capped at 200 by the server.",
+          },
+        },
+        required: ["person_id"],
+      },
+      execute: withCfg(orbitPersonSnapshotsList),
     });
 
     // --- Self-init -------------------------------------------------------

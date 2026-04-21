@@ -1,6 +1,6 @@
 ---
 name: orbit-enricher
-description: Bulk-enrich skeleton person cards (category='other') in Orbit. Lists up to 30 skeletons, fetches recent WhatsApp context per person, classifies them in ONE Claude Sonnet 4 call, and emits kind:"person" observations back via orbit_observation_bulk.
+description: Bulk-enrich skeleton person cards (category='other') in Orbit. Lists up to 30 skeletons, fetches recent WhatsApp context per person, classifies them in ONE Claude Sonnet 4 call, emits kind:"person" observations via orbit_observation_bulk, then writes one person_snapshot per enriched person so the UI Evolution stack can show what this pass learned.
 metadata: {"openclaw":{"emoji":"🪶"}}
 ---
 
@@ -34,11 +34,12 @@ From `orbit-cli` plugin (pure plumbing — no LLM):
 - `orbit_persons_list_enriched({cursor?, limit?})` → `{persons: [{id, name?, phones[], emails[], category, relationship_to_me?, ...}]}` — paginated list; we iterate until we find 30 persons whose latest card has `category === "other"`.
 - `orbit_messages_fetch({person_id, limit})` → `{person_id, messages: [{ts, body, ctx, from_me?}], count}` — last N WhatsApp messages for one person.
 - `orbit_observation_bulk({file_path})` → `{total_lines, batches_posted, total_inserted, total_deduped, failed_batches?}` — streams an NDJSON file of observations to `POST /api/v1/observations`.
+- `orbit_person_snapshot_write({person_id, pass_kind, card_state, evidence_pointer_ids, diff_summary, confidence_delta})` → `{ok, id}` — writes one per-pass card snapshot. The enricher emits `pass_kind: "enricher"` snapshots; each is an immutable record of what THIS pass learned. Powers the UI Evolution stack.
 
 From the built-in `anthropic` skill (the founder's `ANTHROPIC_API_KEY` lives on claw):
 - `claude-sonnet-4-20250514` — the ONE LLM call per batch. Hardcoded. Do not substitute Haiku, Opus, or any other model.
 
-## Order of operations (4 steps; 2 tools + 1 LLM + 1 tool)
+## Order of operations (5 steps; 2 tools + 1 LLM + 2 tools)
 
 ```
 1. orbit_persons_list_enriched          (tool, paged until 30 "other" found)
@@ -49,6 +50,8 @@ From the built-in `anthropic` skill (the founder's `ANTHROPIC_API_KEY` lives on 
    for each."                                              (SKILL — only LLM step)
 4. Write an NDJSON file (one observation per line) and call
    orbit_observation_bulk --file-path /tmp/enrich-<ts>.ndjson  (tool)
+5. For each enriched person, call orbit_person_snapshot_write
+   with pass_kind='enricher' so the Evolution UI shows this pass. (tool)
 ```
 
 ### Step 1 — Enumerate candidates
@@ -140,6 +143,46 @@ Write one line per envelope to `/tmp/enricher-<timestamp>.ndjson` and call `orbi
 
 Expected response: `{ok: true, total_lines: N, batches_posted: 1, total_inserted: N, total_deduped: 0}`. A subsequent run with the same `evidence_pointer` will dedupe — that's fine.
 
+### Step 5 — Write one per-pass snapshot per enriched person
+
+For every person that actually got an observation in Step 4 (i.e. `result` present + envelope written), call `orbit_person_snapshot_write` ONCE with `pass_kind: "enricher"`.
+
+The snapshot records what THIS pass learned about this person. Observations remain the append-only source of truth; snapshots are a UI-facing projection that makes pass boundaries explicit and preserves the LLM-generated `diff_summary` text, which isn't reconstructible from observations.
+
+For each enriched person, call:
+
+```
+orbit_person_snapshot_write({
+  person_id: "<uuid>",
+  pass_kind: "enricher",
+  card_state: {
+    name: "<original card.name>",
+    company: "<result.company|null>",
+    category: "<result.category>",
+    title: "<result.title|null>",
+    relationship_to_me: "<result.relationship_to_me>",
+    phones: <card.phones>,
+    emails: <card.emails>
+  },
+  evidence_pointer_ids: [],  // V1 enricher: empty — the evidence_pointer
+                              // on the kind:"person" observation is a URI,
+                              // not a UUID. If you want to link to the
+                              // observation's DB id, look it up from the
+                              // bulk response; otherwise leave empty.
+  diff_summary: "Classified as <category>. Signals: <one-line cue — same as 'reasoning' in the observation>.",
+  confidence_delta: {
+    category: <result.confidence>,
+    relationship_to_me: <result.confidence>
+  }
+})
+```
+
+Expected response: `{ok: true, id: "<snapshot_uuid>"}`.
+
+If the snapshot write fails (e.g. 404 — person was deleted between steps), log and continue with the next person — the observation already landed in Step 4, so the card is updated; a missing snapshot just means the Evolution stack won't show this pass (a soft degrade, not a failure).
+
+Keep a running `snapshot_ids[]` of successful snapshot IDs to include in the final summary.
+
 ### Final summary
 
 Return a JSON summary (the dispatcher parses this):
@@ -154,6 +197,7 @@ Return a JSON summary (the dispatcher parses this):
   "skipped_canary": 0,
   "inserted": 27,
   "deduped": 0,
+  "snapshots_written": 27,
   "category_shift": {"friend": 8, "community": 6, "founder": 4, "team": 3, "fellow": 3, "other": 3},
   "cost_usd": 0.04
 }
@@ -180,6 +224,7 @@ You:
    {"results":[{"person_id":"…","category":"community","relationship_to_me":"Met at Delhi hackathon; WhatsApp thread on model serving.","company":"Groq","title":null,"confidence":0.8}, …]}
    ```
 4. Write 28 lines to `/tmp/enricher-2026-04-20T12-00.ndjson`, call `orbit_observation_bulk({file_path})` → `{total_inserted: 28}`.
+5. For each of the 28 enriched persons, call `orbit_person_snapshot_write({person_id, pass_kind:"enricher", card_state, diff_summary, confidence_delta})` → collect 28 new snapshot IDs.
 
 Final JSON summary returned to the dispatcher.
 

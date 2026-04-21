@@ -1,14 +1,16 @@
 {
   "id": "orbit-cli",
   "name": "Orbit CLI",
-  "version": "0.5.0",
-  "description": "Pure-plumbing wrapper around Orbit's HTTP API + claw-side fetchers. 19 tools: orbit_observation_emit, orbit_observation_bulk, orbit_person_get, orbit_persons_list_enriched, orbit_self_init, orbit_persons_going_cold, orbit_person_get_by_email, orbit_meeting_upsert, orbit_meeting_list, orbit_topics_upsert, orbit_topics_get, orbit_calendar_fetch, orbit_messages_fetch, orbit_jobs_claim, orbit_jobs_report, orbit_lid_bridge_upsert, orbit_raw_events_backfill_from_wacli, orbit_lid_bridge_ingest, orbit_interactions_backfill. Reads ORBIT_API_BASE + ORBIT_API_KEY from env. No LLM calls — observer/resolver/brief/topic/backfill SKILLs own all interpretation.",
+  "version": "0.6.0",
+  "description": "Pure-plumbing wrapper around Orbit's HTTP API + claw-side fetchers. 21 tools: orbit_observation_emit, orbit_observation_bulk, orbit_person_get, orbit_persons_list_enriched, orbit_person_snapshot_write, orbit_person_snapshots_list, orbit_self_init, orbit_persons_going_cold, orbit_person_get_by_email, orbit_meeting_upsert, orbit_meeting_list, orbit_topics_upsert, orbit_topics_get, orbit_calendar_fetch, orbit_messages_fetch, orbit_jobs_claim, orbit_jobs_report, orbit_lid_bridge_upsert, orbit_raw_events_backfill_from_wacli, orbit_lid_bridge_ingest, orbit_interactions_backfill. Reads ORBIT_API_BASE + ORBIT_API_KEY from env. No LLM calls — observer/resolver/brief/topic/backfill/combiner SKILLs own all interpretation.",
   "entrypoint": "index.js",
   "tools": [
     "orbit_observation_emit",
     "orbit_observation_bulk",
     "orbit_person_get",
     "orbit_persons_list_enriched",
+    "orbit_person_snapshot_write",
+    "orbit_person_snapshots_list",
     "orbit_self_init",
     "orbit_persons_going_cold",
     "orbit_person_get_by_email",

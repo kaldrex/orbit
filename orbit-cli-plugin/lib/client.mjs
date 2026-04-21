@@ -1784,5 +1784,135 @@ export function rawEventToInteractionObservation(row, { self_name } = {}) {
   };
 }
 
+/**
+ * POST /person/:id/snapshots — write ONE immutable per-pass card snapshot.
+ * Called by enricher/resolver/correction SKILLs at pass boundary, and by
+ * the combiner SKILL when writing pass_kind='summary'.
+ *
+ * Returns {ok, id} on success, {error:{...}} on failure.
+ */
+export async function orbitPersonSnapshotWrite(
+  {
+    person_id,
+    pass_kind,
+    card_state,
+    evidence_pointer_ids,
+    diff_summary,
+    confidence_delta,
+  } = {},
+  { config, fetchImpl = fetch } = {},
+) {
+  if (!person_id || typeof person_id !== "string") {
+    return invalidInputError(
+      "person_id (string) is required",
+      "Pass {person_id: '<uuid>'}.",
+    );
+  }
+  if (!UUID_RE.test(person_id)) {
+    return invalidUuidError(person_id);
+  }
+  const VALID_KINDS = new Set(["enricher", "resolver", "summary", "correction"]);
+  if (!pass_kind || !VALID_KINDS.has(pass_kind)) {
+    return invalidInputError(
+      "pass_kind must be one of: enricher, resolver, summary, correction",
+      `Got: ${JSON.stringify(pass_kind)}.`,
+    );
+  }
+
+  const cfg = config ?? resolveConfig();
+  const effective =
+    cfg && typeof cfg === "object" && "ok" in cfg
+      ? cfg.ok
+        ? cfg.config
+        : null
+      : cfg;
+  if (!effective) {
+    return invalidInputError(
+      "ORBIT_API_BASE / ORBIT_API_KEY must be set",
+      "Check the gateway env before calling orbit_person_snapshot_write.",
+    );
+  }
+  const { url, key } = effective;
+
+  const body = {
+    pass_kind,
+    card_state: card_state ?? {},
+    evidence_pointer_ids: Array.isArray(evidence_pointer_ids)
+      ? evidence_pointer_ids
+      : [],
+    diff_summary: typeof diff_summary === "string" ? diff_summary : "",
+    confidence_delta: confidence_delta ?? {},
+  };
+
+  const target = joinUrl(url, `/person/${person_id}/snapshots`);
+  let res;
+  try {
+    res = await fetchImpl(target, {
+      method: "POST",
+      headers: authHeaders(key),
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    return networkError(e);
+  }
+  const respBody = await readBody(res);
+  if (!res.ok) return httpError(res, respBody);
+  return respBody;
+}
+
+/**
+ * GET /person/:id/snapshots?limit=N — list newest-first snapshots for a
+ * person. Used by the UI Evolution stack.
+ *
+ * Returns {snapshots:[...], total} on success, {error:{...}} on failure.
+ */
+export async function orbitPersonSnapshotsList(
+  { person_id, limit } = {},
+  { config, fetchImpl = fetch } = {},
+) {
+  if (!person_id || typeof person_id !== "string") {
+    return invalidInputError(
+      "person_id (string) is required",
+      "Pass {person_id: '<uuid>'}.",
+    );
+  }
+  if (!UUID_RE.test(person_id)) {
+    return invalidUuidError(person_id);
+  }
+
+  const cfg = config ?? resolveConfig();
+  const effective =
+    cfg && typeof cfg === "object" && "ok" in cfg
+      ? cfg.ok
+        ? cfg.config
+        : null
+      : cfg;
+  if (!effective) {
+    return invalidInputError(
+      "ORBIT_API_BASE / ORBIT_API_KEY must be set",
+      "Check the gateway env before calling orbit_person_snapshots_list.",
+    );
+  }
+  const { url, key } = effective;
+
+  const qs = new URLSearchParams();
+  if (limit) qs.set("limit", String(limit));
+  const q = qs.toString();
+  const target = joinUrl(url, `/person/${person_id}/snapshots${q ? `?${q}` : ""}`);
+
+  let res;
+  try {
+    res = await fetchImpl(target, {
+      method: "GET",
+      headers: authHeaders(key),
+    });
+  } catch (e) {
+    return networkError(e);
+  }
+  const body = await readBody(res);
+  if (!res.ok) return httpError(res, body);
+  return body;
+}
+
 // Exported for tests.
 export const __test = { joinUrl, runChild };
