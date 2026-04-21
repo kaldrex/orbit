@@ -88,16 +88,24 @@ describe("filterReagraphNodes", () => {
     expect(filterReagraphNodes(nodes, "All", "me")).toHaveLength(3);
   });
 
-  it("filters by category (sponsors) + always keeps self node", () => {
+  it("dims non-sponsor nodes but keeps them in the array; self stays bright", () => {
     const out = filterReagraphNodes(nodes, "Sponsors", "me");
-    const ids = out.map((n) => n.id).sort();
-    expect(ids).toEqual(["a", "me"]);
+    expect(out).toHaveLength(3);
+    const byId = new Map(out.map((n) => [n.id, n]));
+    expect(byId.get("me")!.data.dimmed ?? false).toBe(false);
+    expect(byId.get("a")!.data.dimmed ?? false).toBe(false);
+    expect(byId.get("b")!.data.dimmed).toBe(true);
+    expect(byId.get("b")!.label).toBe("");
   });
 
-  it("filters by 'Going Cold' + keeps self", () => {
+  it("dims non-cold nodes for 'Going Cold'; self + cold stay bright", () => {
     const out = filterReagraphNodes(nodes, "Going Cold", "me");
-    const ids = out.map((n) => n.id).sort();
-    expect(ids).toEqual(["b", "me"]);
+    expect(out).toHaveLength(3);
+    const byId = new Map(out.map((n) => [n.id, n]));
+    expect(byId.get("me")!.data.dimmed ?? false).toBe(false);
+    expect(byId.get("b")!.data.dimmed ?? false).toBe(false);
+    expect(byId.get("a")!.data.dimmed).toBe(true);
+    expect(byId.get("a")!.label).toBe("");
   });
 });
 

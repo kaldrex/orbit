@@ -74,15 +74,20 @@ export default function GraphCanvas({
     };
   }, [loading]);
 
-  // Auto-fit on load + filter change
+  // Auto-fit ONCE on initial load. The dim-not-remove filter keeps the
+  // node set size stable across tab changes, so re-fitting on every
+  // filter change only produces the compounding zoom-drift the user
+  // complained about — don't do it.
+  const didInitialFit = useRef(false);
   useEffect(() => {
     if (loading || nodes.length === 0 || !graphRef.current) return;
+    if (didInitialFit.current) return;
+    didInitialFit.current = true;
     const id = setTimeout(() => {
       graphRef.current?.centerGraph?.();
-      graphRef.current?.zoomIn?.();
     }, 400);
     return () => clearTimeout(id);
-  }, [loading, nodes.length, activeFilter]);
+  }, [loading, nodes.length]);
 
   const layoutType = resolveLayoutType(layout);
   const clusterActive = clusterOn && layout === "forceDirected";

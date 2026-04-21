@@ -11,7 +11,12 @@ import {
   toReagraphNodes,
 } from "@/lib/graph-transforms";
 
-const MAX_RENDERED_NODES = 20; // TEMP: testing if small graphs render
+// Reagraph / Three.js handles ~2-3k nodes comfortably on modern GPUs.
+// We cap here only as a safety net against pathological datasets; real
+// production networks (1,602 for Sanchay today, ~2k for a heavy user)
+// render fine under this ceiling. Raise cautiously — > 5k starts to
+// thrash the force-directed layout on low-end hardware.
+const MAX_RENDERED_NODES = 2500;
 
 export interface GraphDataOverlays {
   /** Per-person override fill (community-view). */
@@ -61,21 +66,41 @@ export function useGraphData(
       ? raw.links
       : raw.links.filter((l) => l.type === "knows" || (l.weight ?? 0) >= 1);
     const allEdges = toReagraphEdges(prunedLinks);
-    let filtered = filterReagraphNodes(allNodes, activeFilter, selfNodeId);
 
-    // Cap node count to prevent WebGL context loss on large graphs.
-    // Keep self node + top N by score.
-    if (filtered.length > MAX_RENDERED_NODES) {
-      const self = filtered.filter((n) => n.id === selfNodeId);
-      const rest = filtered
-        .filter((n) => n.id !== selfNodeId)
-        .sort((a, b) => b.data.score - a.data.score)
-        .slice(0, MAX_RENDERED_NODES - self.length);
-      filtered = [...self, ...rest];
+    // Cap the render pool BEFORE filtering so the dim-not-remove filter
+    // can operate over the full rendered surface. Priority when capping:
+    // self first, then edge-connected nodes (preserve topology), then
+    // highest-score isolates. Isolates are the long-tail "other" bucket
+    // with no interaction edges.
+    let capped = allNodes;
+    if (allNodes.length > MAX_RENDERED_NODES) {
+      const connected = new Set<string>();
+      for (const e of allEdges) {
+        connected.add(e.source);
+        connected.add(e.target);
+      }
+      const selfNode = allNodes.filter((n) => n.id === selfNodeId);
+      const connectedNodes = allNodes.filter(
+        (n) => connected.has(n.id) && n.id !== selfNodeId,
+      );
+      const isolateNodes = allNodes
+        .filter((n) => !connected.has(n.id) && n.id !== selfNodeId)
+        .sort((a, b) => b.data.score - a.data.score);
+      const budget = Math.max(
+        0,
+        MAX_RENDERED_NODES - selfNode.length - connectedNodes.length,
+      );
+      capped = [...selfNode, ...connectedNodes, ...isolateNodes.slice(0, budget)];
     }
 
-    const keep = new Set(filtered.map((n) => n.id));
-    const filteredEdges = filterEdgesByNodes(allEdges, keep);
+    // Dim-not-remove filter: tag non-matching nodes as dimmed but keep
+    // them in the array so the node set size is stable across filter
+    // changes (prevents reagraph's camera from re-fitting on every tab).
+    const filtered = filterReagraphNodes(capped, activeFilter, selfNodeId);
+    const bright = new Set(
+      filtered.filter((n) => !n.data.dimmed).map((n) => n.id),
+    );
+    const filteredEdges = filterEdgesByNodes(allEdges, bright);
     return { nodes: filtered, edges: filteredEdges };
   }, [raw, activeFilter, selfNodeId, showSelfEdges, communityColor, hubScore]);
 

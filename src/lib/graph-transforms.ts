@@ -36,8 +36,16 @@ export interface ReagraphNode {
     goingCold: boolean;
     /** 0..1 — only populated for top-N hubs from /graph/centrality. */
     hubScore?: number;
+    /** true when the node is filtered out by the active tab. We dim
+     *  instead of removing so the network topology stays stable as
+     *  the user pivots between filters. */
+    dimmed?: boolean;
   };
 }
+
+/** Fill used for dimmed (filtered-out) nodes. Zinc-800 — visible enough
+ *  to preserve topology, dark enough that matching nodes pop. */
+export const DIM_FILL = "#27272a";
 
 export interface ReagraphEdge {
   id: string;
@@ -199,22 +207,53 @@ export const FILTER_TO_CATEGORY: Record<string, string> = {
   friends: "friend",
 };
 
+/** Dim-not-remove: every node stays in the array, but non-matching nodes
+ *  are tagged `dimmed: true`, have their label cleared, and fall to the
+ *  DIM_FILL color. This keeps the camera stable (no re-fit on filter
+ *  change) and preserves network topology as the user pivots between
+ *  filters. Self is never dimmed. */
 export function filterReagraphNodes(
   nodes: ReagraphNode[],
   activeFilter: string,
-  selfNodeId: string
+  selfNodeId: string,
 ): ReagraphNode[] {
-  if (!activeFilter || activeFilter === "All") return nodes;
-  if (activeFilter === "Going Cold") {
-    return nodes.filter((n) => n.data.goingCold || n.id === selfNodeId);
+  if (!activeFilter || activeFilter === "All") {
+    // "All" — clear any prior dim state in case the caller reuses nodes.
+    return nodes.map((n) =>
+      n.data.dimmed ? { ...n, data: { ...n.data, dimmed: false } } : n,
+    );
   }
-  const key = FILTER_TO_CATEGORY[activeFilter.toLowerCase()] ?? activeFilter.toLowerCase();
-  return nodes.filter((n) => n.data.category === key || n.id === selfNodeId);
+  const filterKey = activeFilter === "Going Cold"
+    ? null
+    : FILTER_TO_CATEGORY[activeFilter.toLowerCase()] ?? activeFilter.toLowerCase();
+  const matches = (n: ReagraphNode): boolean => {
+    if (n.id === selfNodeId) return true;
+    if (activeFilter === "Going Cold") return n.data.goingCold;
+    return n.data.category === filterKey;
+  };
+  return nodes.map((n) => {
+    if (matches(n)) {
+      return n.data.dimmed ? { ...n, data: { ...n.data, dimmed: false } } : n;
+    }
+    return {
+      ...n,
+      label: "",
+      fill: DIM_FILL,
+      data: { ...n.data, dimmed: true },
+    };
+  });
 }
 
+/** Dim-not-remove for edges: every edge stays, but edges that touch a
+ *  dimmed node get shrunk to a near-invisible size so the active-filter
+ *  slice visually pops without losing the rest of the graph. Pass the
+ *  set of NON-DIMMED node ids. */
 export function filterEdgesByNodes(
   edges: ReagraphEdge[],
-  nodeIds: Set<string>
+  brightNodeIds: Set<string>,
 ): ReagraphEdge[] {
-  return edges.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
+  return edges.map((e) => {
+    const bothBright = brightNodeIds.has(e.source) && brightNodeIds.has(e.target);
+    return bothBright ? e : { ...e, size: 0.1 };
+  });
 }
