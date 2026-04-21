@@ -11,12 +11,16 @@ import {
   toReagraphNodes,
 } from "@/lib/graph-transforms";
 
-// Reagraph / Three.js handles ~2-3k nodes comfortably on modern GPUs.
-// We cap here only as a safety net against pathological datasets; real
-// production networks (1,602 for Sanchay today, ~2k for a heavy user)
-// render fine under this ceiling. Raise cautiously — > 5k starts to
-// thrash the force-directed layout on low-end hardware.
-const MAX_RENDERED_NODES = 2500;
+// Force-directed layout is O(n²) per tick (with Barnes-Hut O(n log n))
+// and each node allocates Three.js geometry + a text label sprite. At
+// 1,600 nodes the layout hangs the tab 10–30s before settling.
+// Sanchay's real data: 144 edge-connected nodes + 1,458 isolates (phone
+// contacts with zero DM/email signal). The isolates contribute nothing
+// to the visual — they're a cloud of disconnected points. Cap the
+// render pool to the connected core + a small slice of high-score
+// isolates so the graph stays responsive. Full person list is still
+// browsable via the (future) /persons list view + PersonPanel.
+const MAX_RENDERED_NODES = 300;
 
 export interface GraphDataOverlays {
   /** Per-person override fill (community-view). */
