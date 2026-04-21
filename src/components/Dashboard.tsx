@@ -27,8 +27,8 @@ const GraphCanvas = dynamic(() => import("@/components/graph/GraphCanvas"), {
 });
 
 const FILTERS = [
-  "All", "Investors", "Sponsors", "Fellows", "Team", "Media",
-  "Community", "Gov", "Founders", "Friends", "Press", "Going Cold",
+  "All", "Sponsors", "Fellows", "Team", "Media",
+  "Community", "Founders", "Friends", "Going Cold",
 ];
 
 interface DashboardProps {
@@ -51,12 +51,11 @@ export function Dashboard({ user }: DashboardProps) {
   const [graphKey, setGraphKey] = useState(0);
   const [isDark, setIsDark] = useState(true);
 
-  // /api/graph lights up in Phase 2 once Neo4j is populated — until then
-  // stats stay at 0/0 and the fetch no-ops. selfNodeId comes from the
-  // profile (pre-V0 Neo4j concept); if absent, the graph canvas shows
-  // "Initializing..." which is correct behavior while Neo4j is empty.
+  // /api/v1/graph returns empty arrays + zero stats until Neo4j is
+  // populated (the route degrades gracefully to HTTP 200). Once populate
+  // runs, the same shape hydrates the dashboard without a client change.
   useEffect(() => {
-    fetch("/api/graph")
+    fetch("/api/v1/graph")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (d?.stats) setStats({ totalPeople: d.stats.totalPeople ?? 0, goingCold: d.stats.goingCold ?? 0 });

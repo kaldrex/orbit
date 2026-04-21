@@ -588,3 +588,45 @@ Post-pipeline regression discovered + fixed (same commit):
 4. `last_touch` is now populated from real WhatsApp timestamps; this CHANGES the value surfaced to UI for every person with DMs — no card-schema drift, but any UI comparison against a pre-pipeline snapshot will show `last_touch` changes. Not a regression.
 
 **Rollback:** `DROP FUNCTION select_person_card_rows;` + revert the 4 TS files + `DELETE FROM observations WHERE kind IN ('interaction','merge') AND created_at > '2026-04-21'` (cleans the 11,755+ new rows). Persons table + RLS untouched.
+
+---
+
+## 2026-04-21 — Phase 2 constellation graph (populate + render)
+
+**Claim:** "Sanchay's network is materialized into Neo4j as 1,602 `:Person` nodes with DM / SHARED_GROUP / EMAILED edges derived deterministically from Postgres observations. `GET /api/v1/graph` serves the dashboard's constellation with a 4-query read path and graceful degradation. `POST /api/v1/graph/populate` is idempotent. Umayr canary core fields SAME after populate + re-populate."
+
+**Investigation.** Two subagents in parallel. P2-B built the read route `/api/v1/graph`, updated Dashboard + `useGraphData` fetch URLs, trimmed `CATEGORY_META` to the 9 categories that actually exist in our data (removed `investor`/`press`/`gov`). P2-A built `POST /api/v1/graph/populate` on top of five new RPCs + a `neo4j-writes.ts` helper module, with cursor-paginated node reads and a jsonb phone-map RPC (to sidestep PostgREST's 1000-row cap, same class of bug we fixed in Phase 1 on the card endpoint).
+
+**Result:** PASS — all checks green.
+
+| # | Check | Result |
+|---|---|---|
+| a | `npm test` | 26 files, 408 passed + 1 skipped |
+| b | `POST /api/v1/graph/populate` run 1 | nodes_written 1602, edges_written 160 (DM 135 · SHARED_GROUP 23 · EMAILED 2), elapsed ~5–9s |
+| c | `POST /api/v1/graph/populate` run 2 (idempotency) | Same 1602/160; `pruned: {nodes:0, edges:0}` |
+| d | Neo4j probe: `MATCH (p:Person) RETURN count(p)` | 1602 |
+| e | `GET /api/v1/graph` (authed) | 1602 nodes, 160 links, `stats: {totalPeople:1602, goingCold:0}` |
+| f | Umayr canary (`67050b91-…`) | SAME on name / category / company / title / relationship_to_me |
+| g | Postgres state | `SELECT COUNT(*) FROM persons = 1602`, observations = 29,769 — unchanged by populate |
+
+**Evidence:**
+- `src/app/api/v1/graph/route.ts` (156 lines, new) — GET, 4-query Cypher read, graceful-degradation on empty/unreachable.
+- `src/app/api/v1/graph/populate/route.ts` (rewritten from stub) — POST.
+- `src/lib/neo4j-writes.ts` (new) — weight formula, `mergeNodes`, `mergeEdges`, prune.
+- `supabase/migrations/20260421_graph_populate_rpcs.sql` (applied) — 5 RPCs: `select_graph_nodes` (cursor-paginated folded card), `select_phone_person_map` (jsonb return to bypass 1k cap), `select_dm_thread_stats`, `select_group_thread_phones`, `select_email_interactions`.
+- `src/components/{Dashboard,graph/useGraphData,graph/CategoryLegend}.tsx` — URL cutover + CATEGORY_META reconcile.
+- `src/lib/graph-transforms.ts` — trimmed to 9 real categories.
+- Tests: `+11` populate integration, `+8` CATEGORY_META/FILTER unit, contract swaps in `graph-endpoints.test.ts`.
+
+**Data findings (not regressions):**
+
+1. **Edge count came in at 160, not the plan's 2,000+ target.** Root cause: group-message `raw_events` have empty `participant_phones` (17,767 of 17,890) because group senders appear as `@lid` — the manifest-era LID→phone bridge isn't projected into Postgres today. Only 46 phones × 89 group threads were mappable → 23 SHARED_GROUP edges. **Debt flagged:** either ingest a `lid_phone_bridge` projection table via a new migration + populate script (cleanest), or carry LIDs as a sidecar field on `kind:"person"` observations (fits the "observations are source of truth" doctrine better). See `memory/project_tracked_debt_2026_04_20.md` for tracking.
+2. **Only 2 EMAILED edges exist.** Gmail ingestion never wrote per-thread raw_events at volume. Layer-2 Gmail observer is a Phase 4/5-adjacent workstream, not a Phase 2 gap.
+3. **`goingCold: 0`** — no one matches `score > 5 AND last_interaction_at < NOW() - 14d` right now because node `score` defaults from a simple heuristic. Phase 4's Going Cold work will revisit the scoring.
+
+**Doc-18 open questions resolved by the subagent:**
+- Half-life 180 days (doc 18 default).
+- Self-edges included; self resolved via `ORBIT_SELF_EMAIL` name-prefix match and injected into every SHARED_GROUP thread so neighbors see a star-edge to self.
+- Edge-weight formula natural-log (`log(1+count) * exp(-days/180)`) applied uniformly across DM/SHARED_GROUP/EMAILED (brief took precedence over doc 18's log10/no-recency split).
+
+**Rollback:** `MATCH (n:Person) DETACH DELETE n` in Neo4j + `DROP FUNCTION select_graph_nodes, select_phone_person_map, select_dm_thread_stats, select_group_thread_phones, select_email_interactions;` + `git checkout src/app/api/v1/graph src/components/Dashboard.tsx src/components/graph src/lib/graph-transforms.ts src/lib/neo4j-writes.ts`. Postgres state untouched.

@@ -1,11 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const getAuthMock = vi.fn();
+const withReadSessionMock = vi.fn();
 
 vi.mock("@/lib/api-auth", () => ({
   getAgentOrSessionAuth: getAuthMock,
 }));
 
+vi.mock("@/lib/neo4j", () => ({
+  withReadSession: (fn: (session: unknown) => unknown) =>
+    withReadSessionMock(fn),
+}));
+
+const { GET: getGraph } = await import("../../src/app/api/v1/graph/route");
 const { GET: getNeighbors } = await import(
   "../../src/app/api/v1/graph/neighbors/[id]/route"
 );
@@ -168,6 +175,83 @@ describe("GET /api/v1/graph/centrality", () => {
   });
 });
 
+describe("GET /api/v1/graph", () => {
+  beforeEach(() => {
+    getAuthMock.mockReset();
+    withReadSessionMock.mockReset();
+    authed();
+  });
+
+  it("401 when not authenticated", async () => {
+    unauthed();
+    const res = await getGraph(req("http://localhost/api/v1/graph"));
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("returns nodes/links/stats shape when Neo4j has data", async () => {
+    withReadSessionMock.mockResolvedValueOnce({
+      nodes: [
+        {
+          id: "p1",
+          name: "Alice",
+          score: 7,
+          category: "sponsor",
+          company: "Acme",
+          lastInteractionAt: "2026-04-01T00:00:00Z",
+        },
+      ],
+      links: [
+        { source: "p1", target: "p2", weight: 1.5, type: "SHARED_GROUP" },
+      ],
+      stats: { totalPeople: 2, goingCold: 1 },
+    });
+
+    const res = await getGraph(req("http://localhost/api/v1/graph"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(Array.isArray(body.nodes)).toBe(true);
+    expect(Array.isArray(body.links)).toBe(true);
+    expect(body.nodes).toHaveLength(1);
+    expect(body.links).toHaveLength(1);
+    expect(body.stats).toEqual({ totalPeople: 2, goingCold: 1 });
+  });
+
+  it("empty-graph case returns 200 with empty arrays and zero stats", async () => {
+    withReadSessionMock.mockResolvedValueOnce({
+      nodes: [],
+      links: [],
+      stats: { totalPeople: 0, goingCold: 0 },
+    });
+
+    const res = await getGraph(req("http://localhost/api/v1/graph"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({
+      nodes: [],
+      links: [],
+      stats: { totalPeople: 0, goingCold: 0 },
+    });
+  });
+
+  it("Neo4j error → 200 with empty payload + warning log (graceful)", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    withReadSessionMock.mockRejectedValueOnce(new Error("ECONNREFUSED"));
+
+    const res = await getGraph(req("http://localhost/api/v1/graph"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({
+      nodes: [],
+      links: [],
+      stats: { totalPeople: 0, goingCold: 0 },
+    });
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+});
+
 describe("POST /api/v1/graph/populate", () => {
   beforeEach(() => {
     getAuthMock.mockReset();
@@ -182,13 +266,7 @@ describe("POST /api/v1/graph/populate", () => {
     expect(res.status).toBe(401);
   });
 
-  it("501 NOT_IMPLEMENTED when authed", async () => {
-    const res = await postPopulate(
-      req("http://localhost/api/v1/graph/populate", { method: "POST" }),
-    );
-    expect(res.status).toBe(501);
-    const body = await res.json();
-    expect(body.error.code).toBe("NOT_IMPLEMENTED");
-    expect(typeof body.error.message).toBe("string");
-  });
+  // Real 2xx behaviour is covered in the dedicated populate-route test
+  // file (graph-populate-route.test.ts), which mocks supabase + neo4j.
+  // This file only guards the shared auth contract.
 });

@@ -3,8 +3,8 @@
 import { CATEGORY_META } from "@/lib/graph-transforms";
 
 const ORDER = [
-  "self", "team", "investor", "sponsor", "fellow", "media",
-  "community", "gov", "founder", "friend", "press", "other",
+  "self", "team", "sponsor", "fellow", "media",
+  "community", "founder", "friend", "other",
 ] as const;
 
 export default function CategoryLegend() {

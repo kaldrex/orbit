@@ -24,7 +24,7 @@ export function useGraphData(
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/graph")
+    fetch("/api/v1/graph")
       .then((r) => r.json())
       .then((d: ApiGraphData) => {
         if (cancelled) return;

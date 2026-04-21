@@ -52,18 +52,19 @@ export interface CategoryMeta {
   label: string;
 }
 
+// 9-category palette reconciled with real enrichment data (2026-04-20).
+// Removed: investor/press/gov — zero occurrences in Sanchay's corpus and
+// observer rarely emits them. If real data produces these, they fall
+// through to `other` until a palette refresh.
 export const CATEGORY_META: Record<string, CategoryMeta> = {
   self:              { color: "#FFFFFF", label: "Self" },
   team:              { color: "#E4E4E7", label: "Team" },
-  investor:          { color: "#3B82F6", label: "Investor" },
   sponsor:           { color: "#22C55E", label: "Sponsor" },
   fellow:            { color: "#EAB308", label: "Fellow" },
   media:             { color: "#EC4899", label: "Media" },
   community:         { color: "#06B6D4", label: "Community" },
-  gov:               { color: "#8B5CF6", label: "Gov" },
   founder:           { color: "#F97316", label: "Founder" },
   friend:            { color: "#14B8A6", label: "Friend" },
-  press:             { color: "#EF4444", label: "Press" },
   other:             { color: "#52525B", label: "Other" },
 };
 
@@ -155,16 +156,13 @@ export function toReagraphEdges(apiLinks: ApiLink[]): ReagraphEdge[] {
 }
 
 export const FILTER_TO_CATEGORY: Record<string, string> = {
-  investors: "investor",
   sponsors: "sponsor",
   fellows: "fellow",
   team: "team",
   media: "media",
-  gov: "gov",
   community: "community",
   founders: "founder",
   friends: "friend",
-  press: "press",
 };
 
 export function filterReagraphNodes(
