@@ -14,9 +14,10 @@
 // `code` enum the agent can pattern-match on, plus a one-line `suggestion`
 // the agent can surface to the user.
 
-import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { createReadStream, existsSync } from "node:fs";
+import { readFile, stat } from "node:fs/promises";
 import { createInterface } from "node:readline";
+import { spawn } from "node:child_process";
 import { observationSchema, MAX_BATCH, UUID_RE } from "./schema.mjs";
 import { resolveConfig } from "./env.mjs";
 import {
@@ -455,5 +456,702 @@ export async function orbitPersonsListEnriched(
   return { persons: all, warnings };
 }
 
+// -------------------------------------------------------------------------
+// Small helper: unwrap {ok, config} envelope (or a pre-unwrapped config).
+// Shared by every new verb below.
+// -------------------------------------------------------------------------
+function unwrapConfig(cfg) {
+  const resolved = cfg ?? resolveConfig();
+  const effective =
+    resolved && typeof resolved === "object" && "ok" in resolved
+      ? resolved.ok
+        ? resolved.config
+        : null
+      : resolved;
+  if (!effective) {
+    return {
+      error: invalidInputError(
+        "ORBIT_API_URL / ORBIT_API_KEY must be set",
+        "Check the gateway env before calling this verb.",
+      ).error,
+    };
+  }
+  return { config: effective };
+}
+
+/**
+ * POST /self/init — mint / resolve profiles.self_node_id.
+ * Server is idempotent (returns existing id when already set).
+ *
+ * Body is empty; server reads ORBIT_SELF_EMAIL / ORBIT_SELF_PHONE from its
+ * own env and matches kind:"person" observations.
+ *
+ * Returns {self_node_id: "<uuid>"} on 200; {error} on any non-2xx.
+ */
+export async function orbitSelfInit(
+  _params = {},
+  { config, fetchImpl = fetch } = {},
+) {
+  const w = unwrapConfig(config);
+  if (w.error) return { error: w.error };
+  const { url, key } = w.config;
+  const target = joinUrl(url, "/self/init");
+  let res;
+  try {
+    res = await fetchImpl(target, {
+      method: "POST",
+      headers: authHeaders(key),
+      body: JSON.stringify({}),
+    });
+  } catch (e) {
+    return networkError(e);
+  }
+  const body = await readBody(res);
+  if (!res.ok) return httpError(res, body);
+  return body;
+}
+
+/**
+ * GET /persons/going-cold — list dormant ties (score > 2,
+ * last_interaction_at > 14 days old). Server returns {persons[], total}.
+ */
+export async function orbitPersonsGoingCold(
+  _params = {},
+  { config, fetchImpl = fetch } = {},
+) {
+  const w = unwrapConfig(config);
+  if (w.error) return { error: w.error };
+  const { url, key } = w.config;
+  const target = joinUrl(url, "/persons/going-cold");
+  let res;
+  try {
+    res = await fetchImpl(target, { method: "GET", headers: authHeaders(key) });
+  } catch (e) {
+    return networkError(e);
+  }
+  const body = await readBody(res);
+  if (!res.ok) return httpError(res, body);
+  return body;
+}
+
+/**
+ * Resolve an email → enriched person card. There is no server-side
+ * `?q=<email>` filter on /persons/enriched today, so this paginates
+ * client-side and returns the FIRST person whose `emails[]` contains a
+ * case-insensitive match.
+ *
+ * Returns {person: {...}} or {person: null, found: false} if no match.
+ * {error} on HTTP/network failure.
+ */
+export async function orbitPersonGetByEmail(
+  { email } = {},
+  { config, fetchImpl = fetch } = {},
+) {
+  if (!email || typeof email !== "string") {
+    return invalidInputError(
+      "email (string) is required",
+      "Pass {email: 'user@example.com'} — the email to resolve to a person card.",
+    );
+  }
+  const target = email.trim().toLowerCase();
+  if (!target) {
+    return invalidInputError(
+      "email is empty after trim",
+      "Pass a non-empty email address.",
+    );
+  }
+  // Reuse the paginating list verb — same circuit-breaker, same auth.
+  const listed = await orbitPersonsListEnriched(
+    {},
+    { config, fetchImpl },
+  );
+  if (listed.error) return listed;
+  const match = (listed.persons ?? []).find((p) => {
+    if (!Array.isArray(p.emails)) return false;
+    return p.emails.some(
+      (e) => typeof e === "string" && e.trim().toLowerCase() === target,
+    );
+  });
+  if (!match) return { person: null, found: false };
+  return { person: match, found: true };
+}
+
+/**
+ * POST /meetings/upcoming — upsert a batch of meetings/briefs.
+ *
+ * params.meetings: array of {meeting_id, title?, start_at, end_at?,
+ *                   attendees[], brief_md?}.
+ *
+ * Returns {upserted: N} on 2xx. Orbit route validates shape server-side;
+ * the CLI does a minimal pre-check (non-empty array, <= 100 entries).
+ */
+export async function orbitMeetingUpsert(
+  { meetings } = {},
+  { config, fetchImpl = fetch } = {},
+) {
+  if (!Array.isArray(meetings)) {
+    return invalidInputError(
+      "meetings (array) is required",
+      "Pass {meetings: [{meeting_id, start_at, attendees:[...], ...}]}.",
+    );
+  }
+  if (meetings.length === 0) {
+    return invalidInputError(
+      "meetings array is empty",
+      "Pass at least one meeting entry; empty batches are rejected server-side.",
+    );
+  }
+  if (meetings.length > 100) {
+    return invalidInputError(
+      `meetings batch size ${meetings.length} exceeds server cap of 100`,
+      "Split the batch into chunks of at most 100 meetings.",
+    );
+  }
+  const w = unwrapConfig(config);
+  if (w.error) return { error: w.error };
+  const { url, key } = w.config;
+  const target = joinUrl(url, "/meetings/upcoming");
+  let res;
+  try {
+    res = await fetchImpl(target, {
+      method: "POST",
+      headers: authHeaders(key),
+      body: JSON.stringify({ meetings }),
+    });
+  } catch (e) {
+    return networkError(e);
+  }
+  const body = await readBody(res);
+  if (!res.ok) return httpError(res, body);
+  return body;
+}
+
+/**
+ * GET /meetings/upcoming?horizon_hours=<N>. Returns {meetings[]}.
+ * Default horizon = 72h (server default). Clamped server-side to [1, 720].
+ */
+export async function orbitMeetingList(
+  { horizon_hours } = {},
+  { config, fetchImpl = fetch } = {},
+) {
+  const w = unwrapConfig(config);
+  if (w.error) return { error: w.error };
+  const { url, key } = w.config;
+  const qs = new URLSearchParams();
+  if (horizon_hours !== undefined && horizon_hours !== null) {
+    qs.set("horizon_hours", String(horizon_hours));
+  }
+  const q = qs.toString();
+  const target = joinUrl(url, `/meetings/upcoming${q ? `?${q}` : ""}`);
+  let res;
+  try {
+    res = await fetchImpl(target, { method: "GET", headers: authHeaders(key) });
+  } catch (e) {
+    return networkError(e);
+  }
+  const body = await readBody(res);
+  if (!res.ok) return httpError(res, body);
+  return body;
+}
+
+/**
+ * POST /person/:id/topics — atomic replace of topic weights.
+ *
+ * params: {person_id, topics?: [{topic, weight}], file?: absolute path
+ *          to a JSON file containing {topics: [...]} or a raw array}.
+ *
+ * Exactly one of topics / file must be provided.
+ */
+export async function orbitTopicsUpsert(
+  { person_id, topics, file } = {},
+  { config, fetchImpl = fetch } = {},
+) {
+  if (!person_id || typeof person_id !== "string") {
+    return invalidInputError(
+      "person_id (string) is required",
+      "Pass {person_id: '<uuid>', topics: [{topic, weight}]}.",
+    );
+  }
+  if (!UUID_RE.test(person_id)) {
+    return invalidUuidError(person_id);
+  }
+  const haveTopics = Array.isArray(topics);
+  const haveFile = typeof file === "string" && file.length > 0;
+  if (haveTopics === haveFile) {
+    // both or neither
+    return invalidInputError(
+      "exactly one of {topics, file} must be provided",
+      "Pass either {topics: [...]} inline OR {file: '/abs/path.json'} — not both, not neither.",
+    );
+  }
+  let effectiveTopics = topics;
+  if (haveFile) {
+    try {
+      await stat(file);
+    } catch {
+      return fileNotFoundError(file);
+    }
+    let raw;
+    try {
+      raw = await readFile(file, "utf8");
+    } catch (e) {
+      return invalidInputError(
+        `failed to read topics file: ${e?.message ?? e}`,
+        "Check the file is readable by the gateway process on claw.",
+      );
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      return invalidInputError(
+        `topics file is not valid JSON: ${e?.message ?? e}`,
+        "File must contain {\"topics\":[...]} or a bare array of {topic,weight}.",
+      );
+    }
+    if (Array.isArray(parsed)) effectiveTopics = parsed;
+    else if (parsed && Array.isArray(parsed.topics)) effectiveTopics = parsed.topics;
+    else {
+      return invalidInputError(
+        "topics file has no {topics:[...]} array",
+        "File must contain {\"topics\":[...]} or a bare array of {topic,weight}.",
+      );
+    }
+  }
+  const w = unwrapConfig(config);
+  if (w.error) return { error: w.error };
+  const { url, key } = w.config;
+  const target = joinUrl(url, `/person/${person_id}/topics`);
+  let res;
+  try {
+    res = await fetchImpl(target, {
+      method: "POST",
+      headers: authHeaders(key),
+      body: JSON.stringify({ topics: effectiveTopics }),
+    });
+  } catch (e) {
+    return networkError(e);
+  }
+  const body = await readBody(res);
+  if (!res.ok) return httpError(res, body);
+  return body;
+}
+
+/**
+ * GET /person/:id/topics[?limit=N]. Returns {topics[], total}.
+ */
+export async function orbitTopicsGet(
+  { person_id, limit } = {},
+  { config, fetchImpl = fetch } = {},
+) {
+  if (!person_id || typeof person_id !== "string") {
+    return invalidInputError(
+      "person_id (string) is required",
+      "Pass {person_id: '<uuid>'}.",
+    );
+  }
+  if (!UUID_RE.test(person_id)) {
+    return invalidUuidError(person_id);
+  }
+  const w = unwrapConfig(config);
+  if (w.error) return { error: w.error };
+  const { url, key } = w.config;
+  const qs = new URLSearchParams();
+  if (limit !== undefined && limit !== null) qs.set("limit", String(limit));
+  const q = qs.toString();
+  const target = joinUrl(url, `/person/${person_id}/topics${q ? `?${q}` : ""}`);
+  let res;
+  try {
+    res = await fetchImpl(target, { method: "GET", headers: authHeaders(key) });
+  } catch (e) {
+    return networkError(e);
+  }
+  const body = await readBody(res);
+  if (!res.ok) return httpError(res, body);
+  return body;
+}
+
+// --- local helpers (not HTTP) -------------------------------------------
+
+/**
+ * Run a child process, buffer stdout/stderr, return {code, stdout, stderr}.
+ * No retries, no shell. `cmd` is argv[0], `args` is argv[1..].
+ * spawnImpl is injectable for tests.
+ */
+function runChild(cmd, args, { cwd, env, spawnImpl = spawn } = {}) {
+  return new Promise((resolve) => {
+    const child = spawnImpl(cmd, args, { cwd, env, shell: false });
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.on("data", (c) => {
+      stdout += c.toString();
+    });
+    child.stderr?.on("data", (c) => {
+      stderr += c.toString();
+    });
+    child.on("error", (e) => {
+      resolve({ code: -1, stdout, stderr: String(e?.message ?? e) });
+    });
+    child.on("close", (code) => {
+      resolve({ code: code ?? 0, stdout, stderr });
+    });
+  });
+}
+
+/**
+ * Shell out to `gws calendar events list` on claw and normalize the
+ * response to a plain {events: [...]}. No Orbit HTTP call. Used by
+ * orbit-meeting-brief SKILL to avoid hand-crafting gws argv in the
+ * prompt.
+ *
+ * params.horizon_hours: default 72.
+ * params.calendar_id: default "primary".
+ * params.max_results: default 50.
+ */
+export async function orbitCalendarFetch(
+  {
+    horizon_hours = 72,
+    calendar_id = "primary",
+    max_results = 50,
+    // injectables for tests
+    now = () => new Date(),
+    spawnImpl,
+    gwsBin = "gws",
+  } = {},
+  _ctx = {},
+) {
+  if (
+    typeof horizon_hours !== "number" ||
+    !Number.isFinite(horizon_hours) ||
+    horizon_hours <= 0
+  ) {
+    return invalidInputError(
+      "horizon_hours must be a positive number",
+      "Pass {horizon_hours: 72} — the lookahead window in hours.",
+    );
+  }
+  const t0 = now();
+  const t1 = new Date(t0.getTime() + horizon_hours * 3600 * 1000);
+  const params = {
+    calendarId: calendar_id,
+    timeMin: t0.toISOString(),
+    timeMax: t1.toISOString(),
+    singleEvents: true,
+    orderBy: "startTime",
+    maxResults: max_results,
+  };
+  const { code, stdout, stderr } = await runChild(
+    gwsBin,
+    ["calendar", "events", "list", "--params", JSON.stringify(params)],
+    { spawnImpl },
+  );
+  if (code !== 0) {
+    return {
+      error: {
+        code: "NETWORK_ERROR",
+        message: `gws calendar events list exited ${code}`,
+        suggestion:
+          "Check `gws` is installed on claw and the calendar token is fresh. Re-auth via `gws auth login` if needed.",
+        body_preview: (stderr || stdout).slice(0, 500),
+      },
+    };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch (e) {
+    return {
+      error: {
+        code: "VALIDATION_FAILED",
+        message: `gws returned non-JSON output: ${e?.message ?? e}`,
+        suggestion:
+          "gws should be invoked without --format text. The fetcher pins JSON; if gws is wrapped, ensure the wrapper preserves stdout.",
+        body_preview: String(stdout).slice(0, 500),
+      },
+    };
+  }
+  const items = Array.isArray(parsed?.items)
+    ? parsed.items
+    : Array.isArray(parsed)
+      ? parsed
+      : [];
+  return {
+    window: { timeMin: params.timeMin, timeMax: params.timeMax },
+    events: items,
+    count: items.length,
+  };
+}
+
+/**
+ * Local SQLite read on claw: fetch the last N messages (DM + group-authored)
+ * for a person_id, bridging phone→LID via session.db. Returns
+ * {person_id, messages: [{ts, body, ctx, from_me?}]}. No Orbit HTTP call —
+ * pure claw-side plumbing so the topic-resonance SKILL doesn't re-hand-
+ * craft the SQL in its prompt.
+ *
+ * params.person_id: UUID. Required.
+ * params.limit: max messages (default 200).
+ * params.wacli_db / params.session_db: override paths (for tests).
+ * params.sqliteImpl: injectable `better-sqlite3` module for tests.
+ */
+export async function orbitMessagesFetch(
+  {
+    person_id,
+    limit = 200,
+    wacli_db,
+    session_db,
+    config,
+    fetchImpl = fetch,
+    sqliteImpl,
+    now = () => Date.now(),
+    orbitPersonGetImpl = orbitPersonGet,
+  } = {},
+  _ctx = {},
+) {
+  if (!person_id || typeof person_id !== "string") {
+    return invalidInputError(
+      "person_id (string) is required",
+      "Pass {person_id: '<uuid>', limit?: 200}.",
+    );
+  }
+  if (!UUID_RE.test(person_id)) {
+    return invalidUuidError(person_id);
+  }
+  if (!Number.isFinite(limit) || limit <= 0 || limit > 5000) {
+    return invalidInputError(
+      `limit=${limit} out of range (1..5000)`,
+      "Pass limit between 1 and 5000.",
+    );
+  }
+  // Default paths — match scripts/topic-resonance.mjs fallback order.
+  const defaultWacli =
+    wacli_db || process.env.WACLI_DB_PATH || `${process.env.HOME}/.wacli/wacli.db`;
+  const defaultSession =
+    session_db ||
+    process.env.SESSION_DB_PATH ||
+    `${process.env.HOME}/.wacli/session.db`;
+  if (!existsSync(defaultWacli)) {
+    return fileNotFoundError(defaultWacli);
+  }
+
+  // Pull phones via the card so we know which JIDs to query.
+  const card = await orbitPersonGetImpl(
+    { person_id },
+    { config, fetchImpl },
+  );
+  if (card.error) return card;
+  const phones = Array.isArray(card.card?.phones) ? card.card.phones : [];
+  if (phones.length === 0) {
+    return { person_id, messages: [], count: 0, reason: "no_phones_on_card" };
+  }
+
+  // Lazy-load sqlite so the CLI still imports on hosts without the module.
+  let Database = sqliteImpl;
+  if (!Database) {
+    try {
+      const mod = await import("better-sqlite3");
+      Database = mod.default ?? mod;
+    } catch (e) {
+      return {
+        error: {
+          code: "VALIDATION_FAILED",
+          message: `better-sqlite3 not available: ${e?.message ?? e}`,
+          suggestion:
+            "Install better-sqlite3 in the gateway node_modules on claw.",
+        },
+      };
+    }
+  }
+
+  // Load phone → LID map (optional; session.db may be absent).
+  const phoneToLid = new Map();
+  if (existsSync(defaultSession)) {
+    const sdb = new Database(defaultSession, { readonly: true });
+    try {
+      const rows = sdb
+        .prepare("SELECT lid, pn FROM whatsmeow_lid_map")
+        .all();
+      for (const r of rows) {
+        const pn = String(r.pn || "").trim().replace(/\D+/g, "");
+        const lid = String(r.lid || "").trim().split(":")[0];
+        if (pn && lid) phoneToLid.set(pn, lid);
+      }
+    } finally {
+      sdb.close();
+    }
+  }
+
+  const wdb = new Database(defaultWacli, { readonly: true });
+  const out = [];
+  const seen = new Set();
+  try {
+    const dmStmt = wdb.prepare(`
+      SELECT ts, from_me,
+             COALESCE(NULLIF(text,''), NULLIF(display_text,''), NULLIF(media_caption,'')) AS body,
+             chat_name
+        FROM messages
+       WHERE chat_jid = ?
+         AND COALESCE(NULLIF(text,''), NULLIF(display_text,''), NULLIF(media_caption,'')) IS NOT NULL
+       ORDER BY ts DESC
+       LIMIT ?
+    `);
+    const grpByJid = wdb.prepare(`
+      SELECT m.ts, m.chat_name,
+             COALESCE(NULLIF(m.text,''), NULLIF(m.display_text,''), NULLIF(m.media_caption,'')) AS body
+        FROM messages m
+       WHERE m.sender_jid = ?
+         AND m.chat_jid LIKE '%@g.us'
+         AND COALESCE(NULLIF(m.text,''), NULLIF(m.display_text,''), NULLIF(m.media_caption,'')) IS NOT NULL
+       ORDER BY m.ts DESC
+       LIMIT ?
+    `);
+    for (const phone of phones) {
+      const digits = String(phone).replace(/\D+/g, "");
+      if (!digits) continue;
+      const dmJid = `${digits}@s.whatsapp.net`;
+      for (const m of dmStmt.all(dmJid, limit)) {
+        if (!m.body) continue;
+        const key = `${m.ts}|${String(m.body).slice(0, 40)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({
+          ts: m.ts,
+          body: String(m.body).trim(),
+          ctx: "dm",
+          from_me: !!m.from_me,
+        });
+      }
+      const lid = phoneToLid.get(digits);
+      if (lid) {
+        for (const m of grpByJid.all(`${lid}@lid`, limit)) {
+          if (!m.body) continue;
+          const key = `${m.ts}|${String(m.body).slice(0, 40)}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          out.push({
+            ts: m.ts,
+            body: String(m.body).trim(),
+            ctx: `grp:${m.chat_name ?? ""}`,
+          });
+        }
+      }
+      // Pre-LID era: groups where sender_jid is still the phone-JID.
+      for (const m of grpByJid.all(dmJid, limit)) {
+        if (!m.body) continue;
+        const key = `${m.ts}|${String(m.body).slice(0, 40)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({
+          ts: m.ts,
+          body: String(m.body).trim(),
+          ctx: `grp:${m.chat_name ?? ""}`,
+        });
+      }
+    }
+  } finally {
+    wdb.close();
+  }
+  out.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  const trimmed = out.slice(0, limit);
+  return {
+    person_id,
+    messages: trimmed,
+    count: trimmed.length,
+    fetched_at: new Date(now()).toISOString(),
+  };
+}
+
+/**
+ * POST /jobs/claim — Phase 5 prereq. Claims the next job for this agent.
+ * Will 404 until the Phase 5 jobs route ships; the verb is a thin proxy so
+ * SKILLs can be written today and flip to live once the route lands.
+ *
+ * params.agent: agent id string (e.g. "wazowski"). Required.
+ * params.capability: optional filter (e.g. "orbit-observer").
+ */
+export async function orbitJobsClaim(
+  { agent, capability } = {},
+  { config, fetchImpl = fetch } = {},
+) {
+  if (!agent || typeof agent !== "string") {
+    return invalidInputError(
+      "agent (string) is required",
+      "Pass {agent: 'wazowski', capability?: 'orbit-observer'}.",
+    );
+  }
+  const w = unwrapConfig(config);
+  if (w.error) return { error: w.error };
+  const { url, key } = w.config;
+  const target = joinUrl(url, "/jobs/claim");
+  let res;
+  try {
+    res = await fetchImpl(target, {
+      method: "POST",
+      headers: authHeaders(key),
+      body: JSON.stringify({ agent, capability: capability ?? null }),
+    });
+  } catch (e) {
+    return networkError(e);
+  }
+  const body = await readBody(res);
+  if (!res.ok) return httpError(res, body);
+  return body;
+}
+
+/**
+ * POST /jobs/report — Phase 5 prereq. Reports a job's outcome.
+ *
+ * params.job_id: required.
+ * params.status: "succeeded" | "failed" | "retry".
+ * params.result: optional result object.
+ * params.error: optional error string (when status != succeeded).
+ */
+export async function orbitJobsReport(
+  { job_id, status, result, error } = {},
+  { config, fetchImpl = fetch } = {},
+) {
+  if (!job_id || typeof job_id !== "string") {
+    return invalidInputError(
+      "job_id (string) is required",
+      "Pass {job_id: '<id>', status: 'succeeded'|'failed'|'retry'}.",
+    );
+  }
+  if (!status || typeof status !== "string") {
+    return invalidInputError(
+      "status (string) is required",
+      "Pass status: 'succeeded' | 'failed' | 'retry'.",
+    );
+  }
+  const allowed = new Set(["succeeded", "failed", "retry"]);
+  if (!allowed.has(status)) {
+    return invalidInputError(
+      `status='${status}' is not one of: succeeded, failed, retry`,
+      "Use one of the three canonical terminal states.",
+    );
+  }
+  const w = unwrapConfig(config);
+  if (w.error) return { error: w.error };
+  const { url, key } = w.config;
+  const target = joinUrl(url, "/jobs/report");
+  let res;
+  try {
+    res = await fetchImpl(target, {
+      method: "POST",
+      headers: authHeaders(key),
+      body: JSON.stringify({
+        job_id,
+        status,
+        result: result ?? null,
+        error: error ?? null,
+      }),
+    });
+  } catch (e) {
+    return networkError(e);
+  }
+  const body = await readBody(res);
+  if (!res.ok) return httpError(res, body);
+  return body;
+}
+
 // Exported for tests.
-export const __test = { joinUrl };
+export const __test = { joinUrl, runChild };

@@ -10,92 +10,96 @@ metadata: {"openclaw":{"emoji":"📅"}}
 
 - Sanchay asks "what are my meetings today/tomorrow", "brief me on next 72h", "prep for my meetings".
 - A daily cron/trigger wants to refresh the upcoming-meetings strip on Orbit's dashboard.
-- Single run covers the next `horizon_hours` (default 72). No iterative polling — one run, one batch POST back.
+- Single run covers the next `horizon_hours` (default 72). One run, one batch POST back.
 
 ## When NOT to use
 
-- Past meetings — this skill is strictly future-looking. Past-meeting summaries are a separate future skill.
-- Events without human attendees (just you, or just a room) — skip them; briefs are about *relationships*, not calendars.
+- Past meetings — this skill is strictly future-looking.
+- Events without human attendees (just you, or just a room) — briefs are about *relationships*, not calendars.
 - Bulk backfill of an entire year — not designed for that pattern.
 
 ## Safety
 
-- Read-only against `gws calendar` + Orbit GET endpoints. The only write is the single batched `POST /api/v1/meetings/upcoming`.
+- Read-only against `gws calendar` + Orbit GET endpoints. The only write is the single batched `POST /api/v1/meetings/upcoming` via `orbit_meeting_upsert`.
 - Never invoke `gws calendar events insert` / `update` / `delete`.
-- Drop events whose attendees are all non-human (rooms, resources). Rooms have `resource: true` in the Google Calendar API; drop them.
+- Drop events whose attendees are all non-human (rooms, resources). Rooms have `resource: true`.
 - Drop events where you (`sanchaythalnerkar@gmail.com`) are the only attendee.
-- Haiku calls are the ONLY LLM spend in this skill. Do not call Sonnet/Opus. Budget cap: 2048 input tokens per meeting (enforced via prompt caching + small context).
-- Skip a meeting if a brief has been generated within the last 24h (the GET endpoint returns `generated_at`).
+- Haiku calls are the ONLY LLM spend in this skill. Do not call Sonnet/Opus. Budget cap: 2048 input tokens per meeting (prompt caching + small context).
+- Skip a meeting if a brief was generated within the last 24h (`orbit_meeting_list` returns `generated_at`).
 
 ## Your tools
 
-From `orbit-rules` plugin (call these as needed for attendee email canonicalization):
+This SKILL is four CLI verbs plus one LLM call. No raw HTTP, no hand-crafted `gws` argv — the plumbing is in `orbit-cli`.
+
+From `orbit-cli` plugin:
+- `orbit_calendar_fetch({horizon_hours})` → `{window, events[], count}` — shells out to `gws calendar events list` on claw and returns normalized events.
+- `orbit_meeting_list({horizon_hours})` → `{meetings[]}` — reads existing briefs from Orbit.
+- `orbit_person_get_by_email({email})` → `{person, found}` — resolves an attendee email to an Orbit card.
+- `orbit_meeting_upsert({meetings:[...]})` → `{upserted:N}` — writes the batch of briefs.
+
+From `orbit-rules` plugin (used when an attendee email needs bot-filtering before `orbit_person_get_by_email`):
 - `orbit_rules_canonicalize_email({email})` → `{canonical, domain, valid, original}`
 - `orbit_rules_domain_class({domain, localpart_for_bot_check?})` → `{class, confidence, evidence}`
 
-From `orbit-cli` plugin:
-- `orbit_person_get({person_id})` → `{card}` — only useful if you already have a person_id.
-- `orbit_persons_list_enriched()` → `{persons[]}` — paginated list of enriched persons. Each row has `emails[]`, so a single call gives you a local email→person_id map for the whole network.
-
-HTTP (via the `bash` skill, using `curl`) — ONLY for the two meeting-layer endpoints the CLI plugin doesn't yet wrap:
-- `GET $ORBIT_API_URL/meetings/upcoming?horizon_hours=72` — read current state (including `brief_md` + `generated_at`).
-- `POST $ORBIT_API_URL/meetings/upcoming` — write the batch of briefs.
-
-From `gws`:
-- `gws calendar '+agenda' --days 3 --format json` — simple agenda for a quick scan.
-- `gws calendar events list --params '{"calendarId":"primary","timeMin":"<iso>","timeMax":"<iso>","singleEvents":true,"orderBy":"startTime","maxResults":50}'` — full event payloads with `id`, `attendees`, `summary`, `start`, `end`. **This is the canonical source** — `+agenda` drops event IDs and attendees.
-
-From the Anthropic SDK (via the built-in `anthropic` skill or direct `ANTHROPIC_API_KEY` bash curl):
+From the Anthropic SDK (via the built-in `anthropic` skill):
 - `claude-haiku-4-5` for synthesis. No thinking, no tool-use — plain completion with a cached system prompt.
 
-## Order of operations
+## Order of operations (5 steps; 4 tools + 1 LLM)
 
-Given `horizon_hours` (default 72):
+```
+1. orbit_calendar_fetch  --horizon_hours <N>          (tool)
+2. orbit_meeting_list    --horizon_hours <N>          (tool)
+3. for each unbriefed meeting:
+     for each attendee.email:
+       orbit_person_get_by_email <email>              (tool)
+     gather { meeting, attendees_with_cards } as context
+4. Haiku 4.5: "Write a ≤100-word brief …"             (SKILL — only LLM step)
+5. orbit_meeting_upsert  --meetings [...]             (tool)
+```
 
-1. **Compute the time window.**
-   - `TMIN = now UTC`, `TMAX = TMIN + horizon_hours`. ISO 8601 with offset.
+### Step detail
 
-2. **Fetch upcoming events from Google Calendar.**
-   - Call `gws calendar events list --params '{"calendarId":"primary","timeMin":"<TMIN>","timeMax":"<TMAX>","singleEvents":true,"orderBy":"startTime","maxResults":50}'`.
-   - The response has `.items[]`. Each item of interest has `id` (stable), `summary`, `start.dateTime`, `end.dateTime`, `attendees[]` (each with `email`, optional `displayName`, optional `self: true`, optional `resource: true`, optional `organizer: true`).
-   - Filter out events with `status: "cancelled"`, zero attendees, or only `self` attendees.
+**1. Fetch upcoming events.**
+Call `orbit_calendar_fetch({horizon_hours: 72})`. The tool composes `timeMin`/`timeMax`, invokes `gws calendar events list`, and returns `{window, events[], count}`. Each event has `id`, `summary`, `start.dateTime`, `end.dateTime`, `attendees[]`. Filter out:
+- `status: "cancelled"`
+- zero attendees or only `self: true`
+- `eventType: "outOfOffice"`
+- missing `start.dateTime` (all-day events)
 
-3. **Read existing briefs from Orbit.**
-   - `curl -sS -H "Authorization: Bearer $ORBIT_API_KEY" "$ORBIT_API_URL/meetings/upcoming?horizon_hours=<horizon>"`.
-   - Build a `meetingId → {generated_at, has_brief}` map. If a meeting exists with `generated_at` within the last 24h AND `brief_md` is non-empty, SKIP that meeting — don't re-synthesize.
+**2. Read existing briefs.**
+Call `orbit_meeting_list({horizon_hours: 72})`. Build `meetingId → {generated_at, brief_md}` map. Skip any meeting whose `generated_at` is within the last 24h AND has a non-empty `brief_md`.
 
-4. **Build the email→person lookup for attendees.**
-   - Call `orbit_persons_list_enriched()` once. Flatten to `{emailLowercase → {person_id, card}}`.
-   - For each attendee email not in the map, leave the person unresolved — the brief will fall back to "unknown contact" context for that attendee.
+**3. Resolve attendees.**
+For each meeting that needs a brief, for each non-self attendee (drop `self: true`, `resource: true`, and any email whose domain classifies as `bot` via `orbit_rules_domain_class`): call `orbit_person_get_by_email({email})`.
+- `{found: true, person}` → use the card's `{name, company, title, category, relationship_to_me}`.
+- `{found: false}` → fall back to `{email, name: displayName || email}`.
 
-5. **For each meeting that needs a brief:**
-   1. Collect the non-self attendee emails (drop `self: true`, drop any `resource: true`).
-   2. For each remaining attendee: look up in the email→person map. If found, keep the person's `card`. If not, record `{email, name: displayName || email}`.
-   3. Build a compact "attendee context" JSON: for each resolved person include only `{name, company, title, category, relationship_to_me, recent_topics, last_touch}` — NOT the full observation list. For unresolved attendees include `{email, name}` only.
-   4. Call Haiku 4.5 with:
-      ```
-      System (cached):
-        You write pre-meeting briefs for Sanchay, a founder. You are terse, specific, and never sycophantic.
-        Given attendee context, produce a ≤100-word brief that:
-          1. Names the shared history concretely (one to two past topics / interactions).
-          2. Suggests ONE question Sanchay should raise in the meeting.
-        Return ONLY the brief text — no preamble, no heading, no quotes, no markdown except bold/list where natural.
-      User:
-        Meeting title: <summary>
-        Starts at: <start.dateTime>
-        Attendees:
-          - <json block: attendee context>
-        Write the brief.
-      ```
-   5. Record the brief text into your per-meeting envelope.
+Build a compact attendee-context JSON per meeting — see "Attendee context" below.
 
-6. **POST the batch to Orbit.**
-   - Build `{meetings: [{meeting_id, title, start_at, end_at, attendees: [{email, name?, person_id?}], brief_md?}, ...]}` with ONE entry per meeting you either (a) synthesized a brief for, or (b) found in gcal but the brief was fresh — in the (b) case, omit `brief_md` from the POST (the server preserves the existing one on partial upserts).
-   - `curl -sS -X POST -H "Authorization: Bearer $ORBIT_API_KEY" -H "Content-Type: application/json" -d @<payload.json> "$ORBIT_API_URL/meetings/upcoming"`.
-   - Expect `{upserted: N}` in response.
+**4. Synthesize the brief (THE LLM STEP).**
+One Haiku 4.5 call per meeting, with the shared cached system block and a minimal per-meeting user block:
+```
+System (cached, ephemeral):
+  You write pre-meeting briefs for Sanchay, a founder. You are terse, specific, and never sycophantic.
+  Given attendee context, produce a ≤100-word brief that:
+    1. Names the shared history concretely (one to two past topics / interactions).
+    2. Suggests ONE question Sanchay should raise in the meeting.
+  Return ONLY the brief text — no preamble, no heading, no quotes, no markdown except bold/list where natural.
+User:
+  Meeting title: <summary>
+  Starts at: <start.dateTime>
+  Attendees:
+    - <json block: attendee context>
+  Write the brief.
+```
 
-7. **Print the final log line.**
-   - `meeting-brief horizon=<N>h events=<N> briefed=<N> skipped_fresh=<N> upserted=<N> cost_usd=<float>`
+**5. Upsert the batch.**
+Build a `meetings[]` array (one entry per meeting — synthesized OR skipped-fresh; omit `brief_md` for skipped-fresh so the server preserves the existing one). Call `orbit_meeting_upsert({meetings: [...]})`. Expect `{upserted: N}`.
+
+**6. Print the final log line.**
+```
+meeting-brief horizon=<N>h events=<N_total> briefed=<N_new> skipped_fresh=<N_skip> upserted=<N> cost_usd=<usd> errors=<N_errors>
+```
 
 ## Prompt caching
 
@@ -118,12 +122,11 @@ Haiku 4.5 honors `cache_control: {type: "ephemeral"}` on the system block. The s
 ```
 
 Or for unresolved attendees:
-
 ```json
 { "email": "new-contact@example.com", "name": "Alex J" }
 ```
 
-### Meeting entry POSTed to `/api/v1/meetings/upcoming`
+### Meeting entry upserted via `orbit_meeting_upsert`
 
 ```json
 {
@@ -146,10 +149,10 @@ Or for unresolved attendees:
 
 ## Safety drops (enforce before emitting)
 
-- Drop events with `eventType: "outOfOffice"` (not meetings).
+- Drop events with `eventType: "outOfOffice"`.
 - Drop events missing `start.dateTime` (all-day events — separate UX).
-- Drop attendees with emails matching a bot pattern (class=`bot` via `orbit_rules_domain_class`).
-- If Haiku returns empty text or errors, log the failure per meeting, skip the brief but STILL upsert the meeting metadata (`brief_md` omitted). The strip will render the title + attendees without a brief.
+- Drop attendees whose domain classifies as `bot` via `orbit_rules_domain_class`.
+- If Haiku returns empty text or errors, log the failure per meeting, skip the brief but STILL include the meeting metadata in the upsert batch (`brief_md` omitted). The strip renders title + attendees without a brief.
 
 ## Final log line
 
@@ -161,17 +164,22 @@ meeting-brief horizon=<N>h events=<N_total> briefed=<N_new> skipped_fresh=<N_ski
 
 Input: `Run orbit-meeting-brief skill once for 72h horizon.`
 
-Expected output sequence:
-1. One `gws calendar events list` call → 2 upcoming events.
-2. One `GET /meetings/upcoming` call → 0 fresh briefs.
-3. One `orbit_persons_list_enriched` call → ~1500 persons, email map built.
+Expected call sequence (4 tools + 1 LLM + 1 upsert):
+1. `orbit_calendar_fetch(horizon_hours=72)` → 2 upcoming events.
+2. `orbit_meeting_list(horizon_hours=72)` → 0 fresh briefs.
+3. `orbit_person_get_by_email(<email_1>)`, `orbit_person_get_by_email(<email_2>)` — per attendee across both meetings.
 4. Two Haiku calls (one per meeting) with shared cached system prompt.
-5. One `POST /meetings/upcoming` with 2 entries → `{upserted: 2}`.
-6. Log: `meeting-brief horizon=72h events=2 briefed=2 skipped_fresh=0 upserted=2 cost_usd=0.002 errors=0`.
+5. `orbit_meeting_upsert({meetings: [entry1, entry2]})` → `{upserted: 2}`.
+
+Log: `meeting-brief horizon=72h events=2 briefed=2 skipped_fresh=0 upserted=2 cost_usd=0.002 errors=0`.
 
 ## When things fail
 
-- `gws` offline / token expired → log it, exit with `events=0 upserted=0`. Don't fabricate.
-- Orbit 401 → API key invalid. Log and exit; don't hammer with retries.
+- `orbit_calendar_fetch` returns `{error:{code:"NETWORK_ERROR"}}` → gws offline / token expired. Log it, exit with `events=0 upserted=0`. Don't fabricate.
+- `orbit_meeting_list` / `orbit_meeting_upsert` returns `{error:{code:"AUTH_FAILED"}}` → API key invalid. Log and exit; don't hammer with retries.
 - Haiku rate-limit → surface the 429 in the per-meeting log; omit `brief_md` for that meeting; STILL upsert its metadata so the strip has the row.
 - Partial success is fine — always upsert what you have.
+
+## Ratio note (Phase 4.5)
+
+This SKILL is 4 CLI-verb invocations + 1 Haiku call per meeting (the Haiku call is the *only* LLM step). The 60/40 tools-to-skills ratio holds: for a 2-meeting horizon you get 1 + 1 + 4 + 1 = 7 verb calls and 2 Haiku calls — 7:2, well past 60/40.
