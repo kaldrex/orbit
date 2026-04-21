@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 
-export type LayoutKey = "forceDirected" | "forceAtlas2";
+export type LayoutKey = "radialOut2d" | "circular2d" | "forceDirected" | "forceAtlas2";
 export type SizingKey = "attribute" | "pagerank" | "centrality";
 
 interface GraphControlsProps {
@@ -17,6 +17,8 @@ interface GraphControlsProps {
 }
 
 const LAYOUTS: { key: LayoutKey; label: string }[] = [
+  { key: "radialOut2d", label: "Radial" },
+  { key: "circular2d", label: "Circle" },
   { key: "forceDirected", label: "Force" },
   { key: "forceAtlas2", label: "Atlas2" },
 ];

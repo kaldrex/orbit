@@ -20,7 +20,7 @@ import {
 // render pool to the connected core + a small slice of high-score
 // isolates so the graph stays responsive. Full person list is still
 // browsable via the (future) /persons list view + PersonPanel.
-const MAX_RENDERED_NODES = 300;
+const MAX_RENDERED_NODES = 200;
 
 export interface GraphDataOverlays {
   /** Per-person override fill (community-view). */
