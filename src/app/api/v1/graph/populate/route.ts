@@ -306,12 +306,16 @@ export async function POST(request: Request) {
 
   // ---------- Step 3: project edges ----------
 
-  const selfPersonId = findSelfPersonId(
-    nodeRows,
-    phoneMap,
-    (process.env.ORBIT_SELF_EMAIL || "").trim() || undefined,
-    (process.env.ORBIT_SELF_PHONE || "").trim() || undefined,
-  );
+  // Per-user profile.self_node_id wins; env vars are fallback only.
+  // This is the multi-tenant-correct path — the env vars assume one
+  // founder, which breaks the moment a second one (Hardeep) shows up.
+  const selfPersonId = auth.selfNodeId
+    ?? findSelfPersonId(
+      nodeRows,
+      phoneMap,
+      (process.env.ORBIT_SELF_EMAIL || "").trim() || undefined,
+      (process.env.ORBIT_SELF_PHONE || "").trim() || undefined,
+    );
 
   // DM edges: self <-> person, aggregated from thread stats.
   const dmEdges: GraphEdge[] = [];
