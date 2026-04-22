@@ -178,18 +178,17 @@ export function Dashboard({ user }: DashboardProps) {
       <div className="flex-1 flex min-h-0">
         {/* Graph */}
         <div className="flex-1 relative">
-          {selfNodeId ? (
-            <GraphCanvas
-              key={`${graphKey}-${isDark}`}
-              onSelectPerson={(id) => setSelectedPerson(id)}
-              activeFilter={activeFilter}
-              selfNodeId={selfNodeId}
-              isDark={isDark}
-              onStats={handleStats}
-            />
-          ) : (
-            <div className="h-full flex items-center justify-center text-zinc-500 text-sm">
-              Initializing...
+          <GraphCanvas
+            key={`${graphKey}-${isDark}`}
+            onSelectPerson={(id) => setSelectedPerson(id)}
+            activeFilter={activeFilter}
+            selfNodeId={selfNodeId || ""}
+            isDark={isDark}
+            onStats={handleStats}
+          />
+          {!selfNodeId && (
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 text-[11px] text-zinc-500 bg-zinc-900/70 border border-zinc-800 rounded-full px-3 py-1 z-10">
+              self-node not yet resolved — graph may not center on you
             </div>
           )}
 
