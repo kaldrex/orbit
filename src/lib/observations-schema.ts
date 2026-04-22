@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const OBSERVERS = ["wazowski"] as const;
+export const OBSERVERS = ["wazowski", "chad", "axe", "kite"] as const;
 
 export const OBSERVATION_KINDS = [
   "interaction",
