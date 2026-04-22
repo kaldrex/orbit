@@ -383,9 +383,14 @@ export async function POST(request: Request) {
     { a_id: string; b_id: string; group_ids: Set<string>; last_at: string }
   >();
 
+  // Skip mega-groups: SHARED_GROUP edges are O(n²) per group; large
+  // WhatsApp groups (>30 members) produce thousands of noisy pairs
+  // that explode Neo4j + drown out meaningful direct DM/EMAIL edges.
+  const SHARED_GROUP_MAX_MEMBERS = 30;
   for (const [threadId, perThread] of groupByThread) {
     const persons = Array.from(perThread.keys());
     if (persons.length < 2) continue;
+    if (persons.length > SHARED_GROUP_MAX_MEMBERS) continue;
     for (let i = 0; i < persons.length; i++) {
       for (let j = i + 1; j < persons.length; j++) {
         const a = persons[i];
