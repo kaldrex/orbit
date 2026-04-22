@@ -49,5 +49,12 @@ export function resolveConfig(envSource) {
     };
   }
   // Canonicalize: strip trailing slashes so we always join with a single /.
-  return { ok: true, config: { url: base.replace(/\/+$/, ""), key } };
+  // Return both the flat {url, key} and legacy {ok, config} shapes — the
+  // flat shape lets `const {url, key} = config ?? resolveConfig()` work
+  // directly (a long-standing bug was that it destructured nothing when
+  // resolveConfig's wrapper form was returned), while the {ok, config}
+  // shape preserves backward compatibility for earlier call sites that
+  // already unwrap it.
+  const flat = { url: base.replace(/\/+$/, ""), key };
+  return { ok: true, config: flat, url: flat.url, key: flat.key };
 }
