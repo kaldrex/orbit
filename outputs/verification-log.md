@@ -1153,3 +1153,35 @@ Plus deleted companion tests: `tests/unit/manifest-to-observations.test.mjs` (15
 
 **Rollback:** Migrations are idempotent (`create or replace function`). Script deletions are in git history — `git checkout <prev-sha> -- scripts/` restores them, but requires re-adding their Anthropic-outside-SKILLs violations to CLAUDE.md as an explicit exception. Rsync-back via `git checkout` + `rsync -a --delete` to claw.
 
+---
+
+## 2026-04-26 — Hermes Write API Live Release
+
+**Commit:** `ddd5a5c` (`fix(db): recreate enriched RPC for Hermes fields`) on `origin/main`.
+
+**What shipped:**
+- `POST /api/v1/activities`
+- `POST /api/v1/notes`
+- `PATCH /api/v1/persons/{id}`
+- `GET /api/v1/persons/search`
+- `/api/v1/persons/enriched` now includes `relationship_strength`, `last_activity`, `activity_count`
+- Observation schema now supports `kind:"note"` and Hermes activity metadata on `kind:"interaction"`
+
+**Database migrations applied to configured Supabase/Postgres:**
+- `20260426_hermes_observation_writes.sql`
+- `20260426_hermes_card_rows.sql`
+- `20260426_hermes_fold_person_cards.sql`
+- `20260426_hermes_enriched_search.sql`
+
+| # | Artifact | Method | Result |
+|---|---|---|---|
+| a | Focused Hermes API tests | `npm test -- tests/unit/observations-schema.test.ts tests/unit/card-assembler.test.ts tests/unit/hermes-write-api-sql.test.ts tests/integration/activities-endpoint.test.ts tests/integration/notes-endpoint.test.ts tests/integration/person-patch-endpoint.test.ts tests/integration/persons-search-endpoint.test.ts tests/integration/persons-enriched-endpoint.test.ts` | **72 passed, 1 skipped** |
+| b | Vercel production deploy | `vercel deploy --prod --yes` | Ready; aliased to `https://orbit-mu-roan.vercel.app` |
+| c | DB RPC signatures | `pg_get_function_result` for `upsert_observations`, `select_person_card_rows`, `fold_person_cards`, `select_enriched_persons`, `search_persons` | New Hermes fields and search RPC present |
+| d | Live enriched smoke | Authenticated `GET /api/v1/persons/enriched?limit=1` | 200; response includes `relationship_strength`, `last_activity`, `activity_count` |
+| e | Live search smoke | Authenticated `GET /api/v1/persons/search?name=a&limit=1` | 200; response includes `total` and enriched person shape |
+| f | Live write-route smoke without fake writes | Authenticated missing-person requests to `/activities`, `/notes`, and `PATCH /persons/{id}` | All returned `404 {"error":"person not found"}`, confirming routes are deployed and ownership checks run |
+
+**Known unrelated validation blockers:**
+- Local `npx next build` and `npx tsc --noEmit` include `references/hardeep-prototype-2026-04`, which has pre-existing missing module/type errors. Vercel deploy succeeds because deploy packaging excludes those reference files.
+- Full `npm test` still fails only on the pre-existing missing `tests/fixtures/session-minimal.db` WhatsApp fixture used by `orbit-rules-plugin*.test.mjs`.
