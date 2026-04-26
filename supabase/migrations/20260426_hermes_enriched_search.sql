@@ -1,3 +1,6 @@
+drop function if exists public.select_enriched_persons(uuid, uuid, integer);
+drop function if exists public.search_persons(uuid, text, text, text, integer);
+
 create or replace function public.select_enriched_persons(
   p_user_id uuid,
   p_cursor uuid default null,
