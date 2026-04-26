@@ -17,7 +17,15 @@ interface EnrichedPerson {
   relationship_to_me: string;
   company: string | null;
   title: string | null;
+  relationship_strength: string | null;
   updated_at: string | null;
+  last_activity: {
+    type: string | null;
+    title: string | null;
+    occurred_at: string;
+    days_ago: number;
+  } | null;
+  activity_count: number;
 }
 
 interface EnrichedRpcRow {
@@ -29,7 +37,10 @@ interface EnrichedRpcRow {
   relationship_to_me: string | null;
   company: string | null;
   title: string | null;
+  relationship_strength: string | null;
   updated_at: string | null;
+  last_activity: EnrichedPerson["last_activity"];
+  activity_count: number | null;
   page_last_id: string | null;
 }
 
@@ -104,7 +115,10 @@ export async function GET(request: Request) {
       relationship_to_me: r.relationship_to_me ?? "",
       company: r.company,
       title: r.title,
+      relationship_strength: r.relationship_strength,
       updated_at: r.updated_at,
+      last_activity: r.last_activity,
+      activity_count: r.activity_count ?? 0,
     }));
 
   const next_cursor = rows.length > 0 ? rows[0].page_last_id : null;

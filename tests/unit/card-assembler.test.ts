@@ -127,6 +127,55 @@ describe("assembleCard", () => {
     expect(card.observations.recent_corrections).toHaveLength(1);
   });
 
+  it("folds relationship_strength corrections", () => {
+    const rows: ObservationRow[] = [
+      obs({
+        kind: "correction",
+        observed_at: "2026-04-19T00:00:00Z",
+        payload: {
+          target_person_id: personId,
+          field: "relationship_strength",
+          old_value: null,
+          new_value: "warm",
+          source: "other",
+        },
+      }),
+    ];
+    const card = assembleCard(personId, rows);
+    expect(card.relationship_strength).toBe("warm");
+  });
+
+  it("collects recent notes without changing last_touch", () => {
+    const rows: ObservationRow[] = [
+      obs({
+        kind: "interaction",
+        observed_at: "2026-04-12T00:00:00Z",
+        payload: {
+          participants: ["Sanchay", "Umayr"],
+          channel: "meeting",
+          summary: "meeting",
+          topic: "business",
+          relationship_context: "",
+          connection_context: "",
+          sentiment: "neutral",
+        },
+      }),
+      obs({
+        kind: "note",
+        observed_at: "2026-04-20T00:00:00Z",
+        payload: {
+          target_person_id: personId,
+          content: "raising in Q3",
+          source: "hermes:imessage",
+        },
+      }),
+    ];
+    const card = assembleCard(personId, rows);
+    expect(card.last_touch).toBe("2026-04-12T00:00:00Z");
+    expect(card.observations.recent_notes).toHaveLength(1);
+    expect(card.observations.recent_notes[0].summary).toBe("raising in Q3");
+  });
+
   it("correction with null new_value clears an optional field", () => {
     const rows: ObservationRow[] = [
       obs({

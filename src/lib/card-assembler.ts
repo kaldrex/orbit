@@ -1,6 +1,7 @@
 import type {
   Observation,
   InteractionPayload,
+  NotePayload,
   PersonPayload,
   CorrectionPayload,
 } from "./observations-schema";
@@ -42,10 +43,12 @@ export interface PersonCard {
   phones: string[];
   emails: string[];
   relationship_to_me: string;
+  relationship_strength: string | null;
   last_touch: string | null;
   one_paragraph_summary: string;
   observations: {
     interactions: ObservationRef[];
+    recent_notes: ObservationRef[];
     recent_corrections: ObservationRef[];
     total: number;
   };
@@ -131,6 +134,7 @@ export function assembleCard(
   const phones = new Set<string>();
   const emails = new Set<string>();
   const interactions: ObservationRef[] = [];
+  const notes: ObservationRef[] = [];
   const corrections: ObservationRef[] = [];
 
   let name: string | null = null;
@@ -138,6 +142,7 @@ export function assembleCard(
   let title: string | null = null;
   let category: string | null = null;
   let relationship_to_me = "";
+  let relationship_strength: string | null = null;
   let last_touch: string | null = null;
 
   for (const row of sorted) {
@@ -163,6 +168,16 @@ export function assembleCard(
       if (!last_touch || row.observed_at > last_touch) {
         last_touch = row.observed_at;
       }
+    } else if (row.kind === "note") {
+      const p = row.payload as NotePayload;
+      notes.push({
+        id: row.id,
+        observed_at: row.observed_at,
+        kind: row.kind,
+        evidence_pointer: row.evidence_pointer,
+        confidence: row.confidence,
+        summary: p.content,
+      });
     } else if (row.kind === "correction") {
       const p = row.payload as CorrectionPayload;
       corrections.push({
@@ -193,6 +208,11 @@ export function assembleCard(
           break;
         case "relationship_to_me":
           if (typeof p.new_value === "string") relationship_to_me = p.new_value;
+          break;
+        case "relationship_strength":
+          if (p.new_value === null || typeof p.new_value === "string") {
+            relationship_strength = p.new_value as string | null;
+          }
           break;
         case "phones":
           if (Array.isArray(p.new_value)) {
@@ -259,10 +279,12 @@ export function assembleCard(
     phones: Array.from(phones),
     emails: Array.from(emails),
     relationship_to_me,
+    relationship_strength,
     last_touch,
     one_paragraph_summary,
     observations: {
       interactions: interactions.slice(-20),
+      recent_notes: notes.slice(-10),
       recent_corrections: corrections.slice(-10),
       total: rows.length,
     },

@@ -27,6 +27,32 @@ const validInteraction = {
   },
 };
 
+const validActivity = {
+  ...validInteraction,
+  evidence_pointer: "hermes://granola/activity/p1/2026-04-26T18:00:00Z",
+  payload: {
+    ...validInteraction.payload,
+    target_person_id: "00000000-0000-4000-8000-000000000001",
+    activity_type: "meeting",
+    title: "LocalHost Sponsorship",
+    duration_minutes: 45,
+    action_items: ["Adjust pricing tiers"],
+    outcome: "follow_up_scheduled",
+    source: "hermes:granola",
+  },
+};
+
+const validNote = {
+  ...baseEnvelope,
+  kind: "note" as const,
+  evidence_pointer: "hermes://imessage/note/p1/2026-04-26T15:30:00Z",
+  payload: {
+    target_person_id: "00000000-0000-4000-8000-000000000001",
+    content: "Keith mentioned he is raising in Q3.",
+    source: "hermes:imessage",
+  },
+};
+
 const validPerson = {
   ...baseEnvelope,
   kind: "person" as const,
@@ -90,6 +116,23 @@ describe("observationSchema", () => {
     }
   });
 
+  it("accepts Hermes activity metadata on interaction observations", () => {
+    const parsed = observationSchema.parse(validActivity);
+    if (parsed.kind === "interaction") {
+      expect(parsed.payload.target_person_id).toBe(validActivity.payload.target_person_id);
+      expect(parsed.payload.activity_type).toBe("meeting");
+      expect(parsed.payload.action_items).toEqual(["Adjust pricing tiers"]);
+    }
+  });
+
+  it("accepts linked note observations", () => {
+    const parsed = observationSchema.parse(validNote);
+    if (parsed.kind === "note") {
+      expect(parsed.payload.content).toContain("raising");
+      expect(parsed.payload.source).toBe("hermes:imessage");
+    }
+  });
+
   it("accepts a valid person observation with phones and emails", () => {
     const parsed = observationSchema.parse(validPerson);
     if (parsed.kind === "person") {
@@ -128,7 +171,7 @@ describe("observationSchema", () => {
 
   it("rejects unknown observer", () => {
     expect(() =>
-      observationSchema.parse({ ...validInteraction, observer: "chad" })
+      observationSchema.parse({ ...validInteraction, observer: "not-an-observer" })
     ).toThrow();
   });
 

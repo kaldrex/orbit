@@ -13,7 +13,15 @@ let enrichedPayload: Array<{
   relationship_to_me: string | null;
   company: string | null;
   title: string | null;
+  relationship_strength: string | null;
   updated_at: string | null;
+  last_activity: {
+    type: string | null;
+    title: string | null;
+    occurred_at: string;
+    days_ago: number;
+  } | null;
+  activity_count: number | null;
   page_last_id: string | null;
 }> = [];
 let enrichedError: unknown = null;
@@ -24,7 +32,7 @@ vi.mock("@/lib/api-auth", () => ({
 
 vi.mock("@supabase/supabase-js", () => ({
   createClient: () => ({
-    rpc: async (name: string, _args: Record<string, unknown>) => {
+    rpc: async (name: string) => {
       if (name === "select_enriched_persons") {
         return { data: enrichedPayload, error: enrichedError };
       }
@@ -51,7 +59,15 @@ function enrichedRow(
     relationship_to_me: string | null;
     company: string | null;
     title: string | null;
+    relationship_strength: string | null;
     updated_at: string | null;
+    last_activity: {
+      type: string | null;
+      title: string | null;
+      occurred_at: string;
+      days_ago: number;
+    } | null;
+    activity_count: number | null;
     page_last_id: string | null;
   }> = {},
 ) {
@@ -64,7 +80,10 @@ function enrichedRow(
     relationship_to_me: fields.relationship_to_me ?? "",
     company: fields.company ?? null,
     title: fields.title ?? null,
+    relationship_strength: fields.relationship_strength ?? null,
     updated_at: fields.updated_at ?? null,
+    last_activity: fields.last_activity ?? null,
+    activity_count: fields.activity_count ?? 0,
     page_last_id: fields.page_last_id ?? null,
   };
 }
@@ -103,7 +122,15 @@ describe("GET /api/v1/persons/enriched", () => {
         company: "SinX Solutions",
         title: "Founder",
         relationship_to_me: "Close friend",
+        relationship_strength: "warm",
         updated_at: "2026-04-19T08:22:00+00:00",
+        last_activity: {
+          type: "meeting",
+          title: "LocalHost Sponsorship",
+          occurred_at: "2026-04-21T18:00:00Z",
+          days_ago: 5,
+        },
+        activity_count: 3,
         page_last_id: null,
       }),
     ];
@@ -117,9 +144,17 @@ describe("GET /api/v1/persons/enriched", () => {
     expect(body.persons[0].relationship_to_me).toBe("Close friend");
     expect(body.persons[0].company).toBe("SinX Solutions");
     expect(body.persons[0].title).toBe("Founder");
+    expect(body.persons[0].relationship_strength).toBe("warm");
     expect(body.persons[0].phones).toEqual(["+971586783040"]);
     expect(body.persons[0].emails).toEqual(["usheik@sinx.ai"]);
     expect(body.persons[0].updated_at).toBe("2026-04-19T08:22:00+00:00");
+    expect(body.persons[0].last_activity).toEqual({
+      type: "meeting",
+      title: "LocalHost Sponsorship",
+      occurred_at: "2026-04-21T18:00:00Z",
+      days_ago: 5,
+    });
+    expect(body.persons[0].activity_count).toBe(3);
   });
 
   it("skips sentinel rows with id=null but uses their page_last_id", async () => {

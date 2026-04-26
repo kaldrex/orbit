@@ -4,6 +4,7 @@ export const OBSERVERS = ["wazowski", "chad", "axe", "kite"] as const;
 
 export const OBSERVATION_KINDS = [
   "interaction",
+  "note",
   "person",
   "correction",
   "merge",
@@ -62,6 +63,19 @@ const interactionPayloadSchema = z.object({
   relationship_context: z.string().max(1000).default(""),
   connection_context: z.string().max(1000).default(""),
   sentiment: z.enum(INTERACTION_SENTIMENTS),
+  target_person_id: z.string().uuid().optional(),
+  activity_type: z.string().min(1).max(64).optional(),
+  title: z.string().min(1).max(256).optional(),
+  duration_minutes: z.number().int().positive().max(24 * 60).optional(),
+  action_items: z.array(z.string().min(1).max(500)).max(50).optional(),
+  outcome: z.string().max(128).optional(),
+  source: z.string().min(1).max(128).optional(),
+});
+
+const notePayloadSchema = z.object({
+  target_person_id: z.string().uuid(),
+  content: z.string().min(1).max(5000),
+  source: z.string().min(1).max(128),
 });
 
 const personPayloadSchema = z.object({
@@ -115,6 +129,10 @@ export const observationSchema = z.discriminatedUnion("kind", [
     payload: interactionPayloadSchema,
   }),
   baseEnvelope.extend({
+    kind: z.literal("note"),
+    payload: notePayloadSchema,
+  }),
+  baseEnvelope.extend({
     kind: z.literal("person"),
     payload: personPayloadSchema,
   }),
@@ -133,6 +151,7 @@ export const observationSchema = z.discriminatedUnion("kind", [
 ]);
 
 export type InteractionPayload = z.infer<typeof interactionPayloadSchema>;
+export type NotePayload = z.infer<typeof notePayloadSchema>;
 export type PersonPayload = z.infer<typeof personPayloadSchema>;
 export type CorrectionPayload = z.infer<typeof correctionPayloadSchema>;
 export type MergePayload = z.infer<typeof mergePayloadSchema>;
