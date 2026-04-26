@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const getAuthMock = vi.fn();
 const rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
 let personExists = true;
+let lookupError: unknown = null;
 let writeError: unknown = null;
 
 vi.mock("@/lib/api-auth", () => ({
@@ -11,20 +12,14 @@ vi.mock("@/lib/api-auth", () => ({
 
 vi.mock("@supabase/supabase-js", () => ({
   createClient: () => ({
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          eq: () => ({
-            maybeSingle: async () => ({
-              data: personExists ? { id: PERSON_ID } : null,
-              error: null,
-            }),
-          }),
-        }),
-      }),
-    }),
     rpc: async (name: string, args: Record<string, unknown>) => {
       rpcCalls.push({ name, args });
+      if (name === "person_exists_for_user") {
+        return {
+          data: personExists,
+          error: lookupError,
+        };
+      }
       return {
         data: [{ inserted: 1, deduped: 0, inserted_ids: ["obs-1"] }],
         error: writeError,
@@ -60,6 +55,7 @@ describe("POST /api/v1/notes", () => {
     getAuthMock.mockReset();
     getAuthMock.mockResolvedValue({ userId: "user-1", selfNodeId: null });
     personExists = true;
+    lookupError = null;
     writeError = null;
   });
 
@@ -83,7 +79,9 @@ describe("POST /api/v1/notes", () => {
   it("writes a linked note observation", async () => {
     const res = await POST(req(body()));
     expect(res.status).toBe(200);
-    const rows = rpcCalls[0].args.p_rows as Array<{
+    expect(rpcCalls[0].name).toBe("person_exists_for_user");
+    expect(rpcCalls[1].name).toBe("upsert_observations");
+    const rows = rpcCalls[1].args.p_rows as Array<{
       kind: string;
       observed_at: string;
       payload: Record<string, unknown>;
@@ -97,6 +95,12 @@ describe("POST /api/v1/notes", () => {
 
   it("502 when write RPC fails", async () => {
     writeError = { message: "boom" };
+    const res = await POST(req(body()));
+    expect(res.status).toBe(502);
+  });
+
+  it("502 when person lookup RPC fails", async () => {
+    lookupError = { message: "boom" };
     const res = await POST(req(body()));
     expect(res.status).toBe(502);
   });

@@ -10,6 +10,7 @@ const sql = [
   "20260426_hermes_card_rows.sql",
   "20260426_hermes_fold_person_cards.sql",
   "20260426_hermes_enriched_search.sql",
+  "20260426_person_exists_for_user_rpc.sql",
 ]
   .map((file) =>
     readFileSync(resolve(REPO, "supabase/migrations", file), "utf8"),
@@ -31,12 +32,14 @@ describe("Hermes write API SQL", () => {
     expect(sql).toMatch(/function\s+public\.upsert_observations[\s\S]+security\s+definer/i);
     expect(sql).toMatch(/function\s+public\.select_enriched_persons[\s\S]+security\s+definer/i);
     expect(sql).toMatch(/function\s+public\.search_persons[\s\S]+security\s+definer/i);
+    expect(sql).toMatch(/function\s+public\.person_exists_for_user[\s\S]+security\s+definer/i);
     expect(sql).toMatch(/set\s+search_path\s*=\s*public/i);
   });
 
   it("grants RPC execute to API roles", () => {
     expect(sql).toMatch(/grant\s+execute[\s\S]+upsert_observations[\s\S]+anon\s*,\s*authenticated\s*,\s*service_role/i);
     expect(sql).toMatch(/grant\s+execute[\s\S]+search_persons[\s\S]+anon\s*,\s*authenticated\s*,\s*service_role/i);
+    expect(sql).toMatch(/grant\s+execute[\s\S]+person_exists_for_user[\s\S]+anon\s*,\s*authenticated\s*,\s*service_role/i);
   });
 
   it("adds Hermes enriched fields to folded and enriched person output", () => {

@@ -40,13 +40,17 @@ export async function POST(request: Request) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "").trim(),
   );
-  const { data: personRow } = await supabase
-    .from("persons")
-    .select("id")
-    .eq("id", parsed.data.person_id)
-    .eq("user_id", auth.userId)
-    .maybeSingle();
-  if (!personRow) return NextResponse.json({ error: "person not found" }, { status: 404 });
+  const { data: personExists, error: personError } = await supabase.rpc(
+    "person_exists_for_user",
+    { p_user_id: auth.userId, p_person_id: parsed.data.person_id },
+  );
+  if (personError) {
+    console.error("[notes] person lookup rpc error", personError);
+    return NextResponse.json({ error: "read failed" }, { status: 502 });
+  }
+  if (!personExists) {
+    return NextResponse.json({ error: "person not found" }, { status: 404 });
+  }
 
   const observedAt = parsed.data.created_at ?? new Date().toISOString();
   const sourceSlug = slug(parsed.data.source);
