@@ -1185,3 +1185,24 @@ Plus deleted companion tests: `tests/unit/manifest-to-observations.test.mjs` (15
 **Known unrelated validation blockers:**
 - Local `npx next build` and `npx tsc --noEmit` include `references/hardeep-prototype-2026-04`, which has pre-existing missing module/type errors. Vercel deploy succeeds because deploy packaging excludes those reference files.
 - Full `npm test` still fails only on the pre-existing missing `tests/fixtures/session-minimal.db` WhatsApp fixture used by `orbit-rules-plugin*.test.mjs`.
+
+---
+
+## 2026-04-26 — Hermes Activities/Notes Person Lookup Fix
+
+**Commit:** `b27fd64` (`fix(api): resolve Hermes write person lookup`) on `origin/main`.
+
+**Issue:** `POST /api/v1/activities` and `POST /api/v1/notes` returned `404 {"error":"person not found"}` for a Hermes UUID that had linked observations but no row in `public.persons`.
+
+**Fix:** Added `person_exists_for_user(p_user_id, p_person_id)` as a SECURITY DEFINER RPC. Activities/notes now use that RPC instead of direct `persons` table reads. The RPC accepts either:
+- a matching `public.persons` row, or
+- at least one linked observation owned by the authenticated user.
+
+| # | Artifact | Method | Result |
+|---|---|---|---|
+| a | Focused endpoint tests | `npm test -- tests/integration/activities-endpoint.test.ts tests/integration/notes-endpoint.test.ts tests/unit/hermes-write-api-sql.test.ts` | **17 passed** |
+| b | Lint/diff hygiene | `npx eslint ...` and `git diff --check` | clean |
+| c | Production DB migration | `psql $SUPABASE_DB_URL -f supabase/migrations/20260426_person_exists_for_user_rpc.sql` | `CREATE FUNCTION / REVOKE / GRANT` |
+| d | Reported UUID predicate | `select public.person_exists_for_user('abb4bf0b-7132-40d8-989c-19b56b6b6694', 'a3d93401-61a5-4998-9d3f-482d13629f41')` | `true` |
+| e | Tenant isolation check | same UUID with this worktree's API-key user | `false`; live endpoint returns 404 as expected |
+| f | Vercel production deploy | `vercel deploy --prod --yes` | Ready; aliased to `https://orbit-mu-roan.vercel.app` |
